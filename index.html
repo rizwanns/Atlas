@@ -26,6 +26,9 @@
   --serif:'Fraunces',Georgia,serif; --sans:'Outfit',system-ui,sans-serif; --mono:'JetBrains Mono',monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+*{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea,select{-webkit-user-select:text;user-select:text}
+svg,img{pointer-events:none}
 html,body{height:100%}
 body{
   background:var(--bg); color:var(--txt); font-family:var(--sans);
@@ -407,7 +410,7 @@ function vOverview(){
   const m=M(),h=healthScore();
   const main=$('#main');
   main.innerHTML=header('Overview','Your complete financial picture at a glance',
-    `<span class="chip gold">⚙ Income &amp; Budget</span>`)+
+    `<span class="chip gold" onclick="editIncome()" style="cursor:pointer">⚙ Income &amp; Budget</span>`)+
   `<div class="grid g4">
     ${kpi('Total Liabilities',fmtL(m.liabilities),`Loans ${fmtL(m.loanTotal)} + Cards ${fmtL(m.cardTotal)}`,'val-red')}
     ${kpi('Monthly Outflow',fmt(m.outflow),`EMIs ${fmt(m.emiOut)} + Subs ${fmt(m.subOut)}`,'val-gold')}
@@ -640,8 +643,9 @@ function vCards(){
   main.appendChild(guard);
 
   const g=el('div','grid g3');g.style.marginTop='16px';
-  g.innerHTML=DB.cards.map(c=>{const u=Math.round(c.balance/c.limit*100);return `<div class="card">
+  g.innerHTML=DB.cards.map(c=>{const u=c.limit?Math.round(c.balance/c.limit*100):0;return `<div class="card">
     <div class="lbl">${c.name} <span class="pill ${c.scope==='business'?'biz':'per'}">${c.scope}</span></div>
+    <div class="muted" style="font-size:12px;margin-top:4px">${[c.bank,c.last4?'•••• '+c.last4:'',c.network].filter(Boolean).join(' · ')||'—'}</div>
     <div class="kpi sm">${fmt(c.balance)}</div>
     <div class="bar ${u<=30?'green':u<=50?'':'red'}"><span data-w="${Math.min(100,u)}%" style="width:0"></span></div>
     <div class="sub" style="margin-top:8px">${u}% of ${fmt(c.limit)}</div>
@@ -657,17 +661,25 @@ function vCards(){
   main.appendChild(e);
 }
 function addCard(){modal('Add card',`
-  <div class="field"><label>Name</label><input id="cn"></div>
-  <div class="row"><div class="field"><label>Limit ₹</label><input id="cl" type="number"></div>
-  <div class="field"><label>Balance ₹</label><input id="cb" type="number"></div></div>
+  <div class="field"><label>Card name</label><input id="cn" placeholder="e.g. HDFC Infinia"></div>
+  <div class="row"><div class="field"><label>Bank / issuer</label><input id="cbk" placeholder="HDFC Bank"></div>
+  <div class="field"><label>Network</label><input id="cnet" placeholder="Visa / Amex"></div></div>
+  <div class="field"><label>Last 4 digits</label><input id="c4" inputmode="numeric" maxlength="4" placeholder="1234"></div>
+  <div class="row"><div class="field"><label>Credit limit ₹</label><input id="cl" type="number"></div>
+  <div class="field"><label>Current balance ₹</label><input id="cb" type="number"></div></div>
   <div class="field"><label>Scope</label><select id="cs"><option value="business">Business</option><option value="personal">Personal</option></select></div>
+  <p class="muted" style="font-size:11.5px;margin-bottom:12px">Full card number &amp; CVV go in the encrypted <b>Card Vault</b> (Secure Vault menu) — this screen only tracks balance vs limit.</p>
   <button class="btn gold" style="width:100%" onclick="saveCard()">Save</button>`);}
-function saveCard(){DB.cards.push({id:uid(),name:$('#cn').value||'Card',limit:+$('#cl').value||0,balance:+$('#cb').value||0,scope:$('#cs').value});save();closeModal();render();}
+function saveCard(){DB.cards.push({id:uid(),name:$('#cn').value||'Card',bank:$('#cbk').value||'',network:$('#cnet').value||'',last4:($('#c4').value||'').replace(/\D/g,'').slice(-4),limit:+$('#cl').value||0,balance:+$('#cb').value||0,scope:$('#cs').value});save();closeModal();render();}
 function editCard(id){const c=DB.cards.find(x=>x.id===id);modal('Edit card',`
-  <div class="field"><label>Balance ₹</label><input id="cb" type="number" value="${c.balance}"></div>
-  <div class="field"><label>Limit ₹</label><input id="cl" type="number" value="${c.limit}"></div>
+  <div class="field"><label>Card name</label><input id="cn" value="${c.name||''}"></div>
+  <div class="row"><div class="field"><label>Bank / issuer</label><input id="cbk" value="${c.bank||''}"></div>
+  <div class="field"><label>Network</label><input id="cnet" value="${c.network||''}"></div></div>
+  <div class="field"><label>Last 4 digits</label><input id="c4" inputmode="numeric" maxlength="4" value="${c.last4||''}"></div>
+  <div class="row"><div class="field"><label>Current balance ₹</label><input id="cb" type="number" value="${c.balance}"></div>
+  <div class="field"><label>Credit limit ₹</label><input id="cl" type="number" value="${c.limit}"></div></div>
   <button class="btn gold" style="width:100%" onclick="updCard('${id}')">Save</button>`);}
-function updCard(id){const c=DB.cards.find(x=>x.id===id);c.balance=+$('#cb').value;c.limit=+$('#cl').value;save();closeModal();render();}
+function updCard(id){const c=DB.cards.find(x=>x.id===id);c.name=$('#cn').value||c.name;c.bank=$('#cbk').value;c.network=$('#cnet').value;c.last4=($('#c4').value||'').replace(/\D/g,'').slice(-4);c.balance=+$('#cb').value;c.limit=+$('#cl').value;save();closeModal();render();}
 function delCard(id){DB.cards=DB.cards.filter(c=>c.id!==id);save();render();}
 
 /* ---- SUBSCRIPTIONS ---- */
@@ -1000,7 +1012,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.0.0';
+const APP_VERSION='1.0.2';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
@@ -1012,6 +1024,9 @@ const APP_VERSION='1.0.0';
   // check for a new deploy whenever the app is reopened / refocused
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&reg)reg.update();});
 })();
+
+/* block long-press text-search / image-Lens menus on the UI (keep paste in fields) */
+document.addEventListener('contextmenu',function(e){if(!e.target.closest('input,textarea'))e.preventDefault();});
 
 /* boot */
 document.body.dataset.view='overview';
