@@ -201,7 +201,7 @@ section.on{display:block}
       <div class="sep">Life</div>
       <a data-v="vacation"><span class="ic">✈</span> Vacation Planner</a>
       <a data-v="garage"><span class="ic">⛭</span> Garage</a>
-      <a data-v="lifestyle"><span class="ic">◇</span> Lifestyle</a>
+      <a data-v="lifestyle"><span class="ic">◇</span> Spending</a>
       <div class="sep">Secure Vault</div>
       <a data-v="cardvault"><span class="ic">⊞</span> Card Vault</a>
       <a data-v="loginvault"><span class="ic">⚿</span> Login Vault</a>
@@ -253,6 +253,8 @@ function seed(){
     vacations:[],
     cars:[],
     lifestyle:[],
+    expenses:[],
+    nwHistory:[],
     receivables:[],
     meta:{lastSeenVersion:null},
     vaultEnc:null
@@ -262,6 +264,8 @@ function seed(){
 let DB = load();
 function load(){try{const r=localStorage.getItem(LS_KEY);return r?JSON.parse(r):seed();}catch(e){return seed();}}
 if(!DB.receivables)DB.receivables=[];
+if(!DB.expenses)DB.expenses=[];
+if(!DB.nwHistory)DB.nwHistory=[];
 if(!DB.meta)DB.meta={lastSeenVersion:'1.5.0'};
 function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(DB));return true;}catch(e){return false;}}
 function uid(){return 'x'+Math.random().toString(36).slice(2,9);}
@@ -293,7 +297,9 @@ function metrics(){
   while(bal>0 && mo<600){bal=bal*(1+rAvg/100/12)-repay;mo++;}
   const dfree=new Date();dfree.setMonth(dfree.getMonth()+mo);
   const ff=sumBy(DB.loans.filter(l=>l.relationship),l=>l.balance);
-  return {loanTotal,cardTotal,liabilities,emiOut,subOut,outflow,income,goals,repay,surplus,assets,networth,cardLimit,util,
+  const ymNow=new Date().toISOString().slice(0,7);
+  const expMonth=sumBy((DB.expenses||[]).filter(e=>(e.date||'').slice(0,7)===ymNow),e=>e.amount);
+  return {loanTotal,cardTotal,liabilities,emiOut,subOut,outflow,income,goals,repay,surplus,assets,networth,cardLimit,util,expMonth,
     biz:{liab:bizLoan+bizCard,out:bizOut},per:{liab:perLoan+perCard,out:perOut},dfreeMonths:mo,dfree,ff,rAvg};
 }
 
@@ -461,6 +467,17 @@ function vHome(){
     (soon.length?soon.map(p=>`<div class="list-row"><div><div>${p.name}</div><div class="muted" style="font-size:11.5px">${p.kind}${p.card?' · '+p.card:''}</div></div><div style="text-align:right"><div class="num">${fmt(p.amount)}</div><div class="muted" style="font-size:11.5px;${p.due<=1?'color:var(--amber)':''}">${p.due<=0?'today':p.due===1?'tomorrow':'in '+p.due+'d'}</div></div></div>`).join('')
       :'<div class="empty">Nothing due in the next 7 days — breathe easy.</div>');
   main.appendChild(cu);
+
+  const lastBk=DB.meta&&DB.meta.lastBackup;const bkDays=lastBk?-daysTo(lastBk.slice(0,10)):null;
+  if(!lastBk||bkDays>14){const bk=el('div','card');bk.style.marginTop='16px';bk.style.borderColor='rgba(217,180,106,.35)';
+    bk.innerHTML=`<div class="insight" style="margin:0"><div class="n">⤓</div><div><h4>Back up your data</h4><p>${lastBk?`Last backup was ${bkDays} days ago.`:'You haven\'t backed up yet.'} Everything lives only on this device — export a copy to stay safe.</p></div></div>
+      <div style="margin-top:12px"><button class="btn sm gold" onclick="doBackup()">Back up now</button></div>`;
+    main.appendChild(bk);}
+
+  const nd=nudges();
+  if(nd.length){const ndc=el('div','card');ndc.style.marginTop='16px';
+    ndc.innerHTML=`<div class="sectit" style="margin:0 0 12px">Heads Up</div>`+nd.slice(0,3).map(t=>`<div class="insight" style="margin:0 0 10px"><div class="n">!</div><div><p style="margin:0">${t}</p></div></div>`).join('');
+    main.appendChild(ndc);}
 
   const nudge=el('div','card');nudge.style.marginTop='16px';
   const msg=h.score>=70?'Your finances are in healthy shape — keep the momentum.':h.score>=50?'You\'re on track. A few small tweaks will lift your score.':'One step at a time. Start with your highest-interest debt and the rest follows.';
@@ -877,8 +894,23 @@ function vNet(){
     kpi('Liabilities',fmtL(m.liabilities),'loans + cards','val-red')+
     kpi('Net Worth',fmtL(m.networth),'assets − liabilities','val-gold');
   main.appendChild(top);
-  const c=el('div','card');c.style.marginTop='16px';
-  const max=Math.max(...DB.assets.map(a=>a.value),1);
+  const hist=(DB.nwHistory||[]).slice(-12);
+  const tc=el('div','card');tc.style.marginTop='16px';
+  if(hist.length>=2){
+    const vals=hist.map(s=>s.value);const mn=Math.min(...vals),mx=Math.max(...vals);const rng=(mx-mn)||1;
+    const W=300,H=90,step=W/(hist.length-1);
+    const pts=hist.map((s,i)=>[i*step, H-((s.value-mn)/rng)*H]);
+    const path=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+    const area=`${path} L ${W} ${H} L 0 ${H} Z`;
+    const chg=hist[hist.length-1].value-hist[0].value;
+    tc.innerHTML=`<div class="sectit" style="margin:0 0 6px">Net Worth Trend <small>${hist.length} MO</small></div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:10px">${chg>=0?'▲ Up':'▼ Down'} ${fmtL(Math.abs(chg))} since ${hist[0].ym}</div>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:90px;display:block"><path d="${area}" fill="rgba(121,179,148,.12)"/><path d="${path}" fill="none" stroke="var(--green)" stroke-width="2"/></svg>
+      <div class="list-row" style="border:none;padding:6px 0 0"><span class="muted" style="font-size:11px">${hist[0].ym}</span><span class="muted" style="font-size:11px">${hist[hist.length-1].ym}</span></div>`;
+  }else{
+    tc.innerHTML=`<div class="sectit" style="margin:0 0 6px">Net Worth Trend</div><div class="muted" style="font-size:12.5px">A snapshot is saved each month — your trend line appears here from next month onward. First point recorded for ${hist[0]?hist[0].ym:new Date().toISOString().slice(0,7)}.</div>`;
+  }
+  main.appendChild(tc);
   c.innerHTML=`<div class="sectit" style="margin:0 0 14px">Asset Allocation</div>`+
     DB.assets.sort((a,b)=>b.value-a.value).map(a=>`<div style="margin-bottom:16px"><div class="list-row" style="border:none;padding:0 0 6px"><span>${a.name} <span class="muted">· ${a.type}</span></span><span class="num">${fmtL(a.value)} <button class="btn sm danger" onclick="delAsset('${a.id}')" style="margin-left:8px">✕</button></span></div><div class="bar"><span data-w="${Math.round(a.value/max*100)}%" style="width:0"></span></div></div>`).join('');
   main.appendChild(c);
@@ -1013,6 +1045,7 @@ function rmRecv(rid,pid){const r=DB.receivables.find(x=>x.id===rid);r.payments=(
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.7.0',notes:['New Spending tracker — log expenses by category and see where your money goes each month.','Net-worth trend chart that builds month over month.','Backup reminders so your data stays safe.','Smarter “Heads Up” nudges on the Home screen.']},
  {v:'1.6.0',notes:['New “Owed to Me” ledger — track who owes you and record each repayment (partial payments supported).','Goals now suggest where your monthly savings should go — priority drives the split (P1 fills first).','This “What’s New” note pops up whenever the app updates.']},
  {v:'1.5.0',notes:['Goals: log actual savings with amount + where it’s kept (bank / gold / FD); see saved-to-date and a location breakdown.']},
  {v:'1.4.0',notes:['Garage redesigned — vehicle switcher, insurance & PUC expiry alerts, and a document glovebox with photo storage.']},
@@ -1156,24 +1189,44 @@ function saveRepair(carId){const c=DB.cars.find(x=>x.id===carId);c.repairs.push(
 /* ---- LIFESTYLE ---- */
 function vLife(){
   const main=$('#main');
-  main.innerHTML=header('Lifestyle','Spend tracking with anomaly detection','');
-  const months=['jan','feb','mar','apr','may'];const labels=['Jan','Feb','Mar','Apr','May'];
-  const c=el('div','card');
-  let rows='';let anomalies=[];
-  DB.lifestyle.forEach(l=>{
-    const vals=months.map(m=>l[m]);const avg=sumBy(vals.slice(0,4),x=>x)/4;const last=vals[4];const spike=last>avg*1.4;
-    if(spike)anomalies.push({cat:l.cat,last,avg});
-    rows+=`<tr><td>${l.cat}</td>${vals.map((v,i)=>`<td class="num ${i===4&&spike?'val-red':''}">${fmt(v)}</td>`).join('')}<td>${spike?'<span class="pill crit">spike</span>':'<span class="pill ok">normal</span>'}</td></tr>`;
-  });
-  c.innerHTML=`<div class="sectit" style="margin:0 0 14px">Monthly Spend by Category</div>
-    <table><thead><tr><th>Category</th>${labels.map(l=>`<th>${l}</th>`).join('')}<th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
-  main.appendChild(c);
-  if(anomalies.length){
-    const a=el('div','card');a.style.marginTop='16px';a.style.borderColor='rgba(217,139,134,.3)';
-    a.innerHTML=`<div class="lbl">⚠ Anomalies Detected</div>`+anomalies.map(x=>`<div class="insight" style="margin-top:12px"><div class="n">!</div><div><h4>${x.cat} spiked this month</h4><p>${fmt(x.last)} vs ${fmt(Math.round(x.avg))} average — ${Math.round((x.last/x.avg-1)*100)}% above your norm. Worth a look.</p></div></div>`).join('');
-    main.appendChild(a);
+  main.innerHTML=header('Spending','Log expenses &amp; see where it goes',`<span class="chip gold" onclick="addExpense()" style="cursor:pointer">+ Add expense</span>`);
+  const ym=new Date().toISOString().slice(0,7);
+  const monthExp=(DB.expenses||[]).filter(e=>(e.date||'').slice(0,7)===ym);
+  const tot=sumBy(monthExp,e=>e.amount), biz=sumBy(monthExp.filter(e=>e.scope==='business'),e=>e.amount);
+  const top=el('div','grid g3');
+  top.innerHTML=kpi('This month',fmtL(tot),`${monthExp.length} ${monthExp.length===1?'entry':'entries'}`,'val-gold')+
+    kpi('Business',fmtL(biz),'this month','val-blue')+
+    kpi('Personal',fmtL(tot-biz),'this month','val-green');
+  main.appendChild(top);
+  const cat={};monthExp.forEach(e=>{const k=e.category||'Other';cat[k]=(cat[k]||0)+e.amount;});
+  const cats=Object.entries(cat).sort((a,b)=>b[1]-a[1]);
+  const cb=el('div','card');cb.style.marginTop='16px';
+  if(cats.length){const mx=cats[0][1]||1;
+    cb.innerHTML=`<div class="sectit" style="margin:0 0 14px">By Category <small>${new Date().toLocaleDateString('en-IN',{month:'long'}).toUpperCase()}</small></div>`+
+      cats.map(([k,v])=>`<div style="margin-bottom:14px"><div class="list-row" style="border:none;padding:0 0 6px"><span>${k}</span><span class="num">${fmt(v)} <span class="muted" style="font-size:11px">${tot?Math.round(v/tot*100):0}%</span></span></div><div class="bar"><span data-w="${Math.round(v/mx*100)}%" style="width:0"></span></div></div>`).join('');
+  }else{cb.innerHTML='<div class="empty">No expenses logged this month — tap “+ Add expense”.</div>';}
+  main.appendChild(cb);
+  const recent=[...(DB.expenses||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,20);
+  if(recent.length){
+    const rc=el('div','card');rc.style.marginTop='16px';
+    rc.innerHTML=`<div class="sectit" style="margin:0 0 14px">Recent</div>`+
+      recent.map(e=>`<div class="list-row"><div><div>${e.category||'Other'} <span class="pill ${e.scope==='business'?'biz':'per'}">${e.scope}</span></div><div class="muted" style="font-size:11.5px">${new Date(e.date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}${e.method?' · '+e.method:''}${e.note?' · '+e.note:''}</div></div><div style="text-align:right;white-space:nowrap"><span class="num">${fmt(e.amount)}</span> <button class="btn sm danger" onclick="delExpense('${e.id}')">✕</button></div></div>`).join('');
+    main.appendChild(rc);
   }
 }
+function addExpense(){
+  const cats=['Food & dining','Groceries','Fuel','Transport','Shopping','Bills & utilities','Rent','Health','Education','Entertainment','Business','Family','Other'];
+  const cardOpts=DB.cards.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
+  modal('Add expense',`
+   <div class="field"><label>Amount ₹</label><input id="exa" type="number"></div>
+   <div class="field"><label>Category</label><select id="exc">${cats.map(c=>`<option>${c}</option>`).join('')}</select></div>
+   <div class="row"><div class="field"><label>Paid via</label><select id="exm"><option value="Cash">Cash</option><option value="UPI">UPI</option><option value="Debit card">Debit card</option>${cardOpts}</select></div>
+   <div class="field"><label>Scope</label><select id="exs"><option value="personal">Personal</option><option value="business">Business</option></select></div></div>
+   <div class="field"><label>Date</label><input id="exd" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+   <div class="field"><label>Note (optional)</label><input id="exn"></div>
+   <button class="btn gold" style="width:100%" onclick="saveExpense()">Add</button>`);}
+function saveExpense(){const amt=+$('#exa').value||0;if(amt<=0){toast('Enter an amount');return;}DB.expenses=DB.expenses||[];DB.expenses.push({id:uid(),amount:amt,category:$('#exc').value,method:$('#exm').value,scope:$('#exs').value,date:$('#exd').value||new Date().toISOString().slice(0,10),note:$('#exn').value||''});save();closeModal();render();toast(`Added ${fmt(amt)}`);}
+function delExpense(id){DB.expenses=DB.expenses.filter(e=>e.id!==id);save();render();}
 
 /* ============================================================
    VAULT VIEWS
@@ -1320,6 +1373,7 @@ function doBackup(){
   const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='atlas-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();
+  DB.meta=DB.meta||{};DB.meta.lastBackup=new Date().toISOString();save();
   closeModal();toast('Backup downloaded');
 }
 $('#fileIn').addEventListener('change',e=>{
@@ -1329,7 +1383,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.6.0';
+const APP_VERSION='1.7.0';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
@@ -1346,6 +1400,18 @@ const APP_VERSION='1.6.0';
 document.addEventListener('contextmenu',function(e){if(!e.target.closest('input,textarea'))e.preventDefault();});
 
 /* boot */
+function snapshotNW(){const ym=new Date().toISOString().slice(0,7);const v=metrics().networth;DB.nwHistory=DB.nwHistory||[];const ex=DB.nwHistory.find(s=>s.ym===ym);if(ex)ex.value=v;else DB.nwHistory.push({ym,value:v});DB.nwHistory=DB.nwHistory.slice(-24);save();}
+function nudges(){
+  const m=metrics();const out=[];
+  if(m.income>0&&m.subOut/m.income>0.1)out.push(`Subscriptions are ${Math.round(m.subOut/m.income*100)}% of your income — worth a prune.`);
+  if(m.util>50)out.push(`Card utilisation is ${m.util}% — staying under 30% protects your CIBIL score.`);
+  const owed=(DB.receivables||[]).filter(r=>recvOut(r)>0);
+  if(owed.length){const t=owed.sort((a,b)=>recvOut(b)-recvOut(a))[0];out.push(`${t.person} still owes you ${fmt(recvOut(t))}.`);}
+  let last=null;(DB.goals||[]).forEach(g=>(g.contributions||[]).forEach(c=>{if(!last||c.date>last)last=c.date;}));
+  if(DB.goals&&DB.goals.length){if(!last)out.push("You haven't logged any savings yet — even a small amount counts.");else{const d=daysTo(last);if(d!=null&&-d>21)out.push(`No savings logged in ${-d} days — keep the streak going.`);}}
+  return out;
+}
+snapshotNW();
 document.body.dataset.view='home';
 var _v=document.getElementById('verLbl');if(_v)_v.textContent='v'+APP_VERSION;
 render();
