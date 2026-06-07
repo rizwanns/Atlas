@@ -140,6 +140,19 @@ section.on{display:block}
 .copybtn{cursor:pointer;color:var(--gold);font-size:12px;font-weight:600;border:none;background:none;font-family:var(--sans)}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(40px);background:var(--card2);border:1px solid var(--line2);color:var(--txt);padding:12px 20px;border-radius:12px;font-size:13px;z-index:500;opacity:0;transition:.3s;pointer-events:none}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.vswitch{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:16px}
+.vswitch button{flex:0 0 auto;border:1px solid var(--line2);background:var(--card);color:var(--txt2);border-radius:12px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)}
+.vswitch button.on{background:var(--gold-dim);color:var(--gold2);border-color:rgba(201,168,106,.3)}
+.vhero{position:relative;border-radius:var(--r);overflow:hidden;background:var(--card2);min-height:150px;display:flex;align-items:flex-end;padding:16px;margin-bottom:16px;border:1px solid var(--line)}
+.vhero img.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.5}
+.vhero .meta{position:relative;z-index:1}
+.regbadge{display:inline-block;background:#fff;color:#111;font-family:var(--mono);font-weight:600;font-size:13px;padding:3px 10px;border-radius:6px;border:2px solid #1b3aa0}
+.glovebox{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.doctile{border:1px dashed var(--line2);border-radius:14px;height:118px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;position:relative;background:var(--bg2)}
+.doctile img{width:100%;height:100%;object-fit:cover}
+.doctile .ph{color:var(--muted);font-size:12.5px;text-align:center;padding:6px;line-height:1.8}
+.doctile .cap{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(0,0,0,.78));color:#fff;font-size:11px;padding:16px 6px 6px;text-align:center}
+.expbanner{border-radius:12px;padding:9px 14px;font-size:12.5px;font-weight:600;text-align:center;margin-bottom:10px}
 
 @media(max-width:880px){
   .app{grid-template-columns:1fr}
@@ -172,10 +185,12 @@ section.on{display:block}
       <div><b>Atlas</b><small>Command Centre</small></div>
     </div>
     <nav class="nav" id="nav">
-      <a data-v="overview" class="on"><span class="ic">◆</span> Overview</a>
+      <a data-v="home" class="on"><span class="ic">✦</span> Home</a>
+      <a data-v="overview"><span class="ic">◆</span> Overview</a>
       <a data-v="advisor"><span class="ic">✦</span> AI Advisor</a>
       <div class="sep">Debt</div>
       <a data-v="debts"><span class="ic">⚖</span> Debts &amp; Loans</a>
+      <a data-v="owed"><span class="ic">⇄</span> Owed to Me</a>
       <a data-v="repay"><span class="ic">↻</span> Repayment Plan</a>
       <a data-v="cards"><span class="ic">▭</span> Cards &amp; EMIs</a>
       <a data-v="subs"><span class="ic">∞</span> Subscriptions</a>
@@ -193,7 +208,7 @@ section.on{display:block}
       <div class="sep">Data</div>
       <a id="backupBtn"><span class="ic">⤓</span> Backup / Restore</a>
     </nav>
-    <div style="margin-top:auto;padding:16px 12px 2px;color:var(--muted);font-size:10px;letter-spacing:1.5px">ATLAS · <span id="verLbl"></span></div>
+    <div style="margin-top:auto;padding:16px 12px 2px;color:var(--muted);font-size:10px;letter-spacing:1.5px;cursor:pointer" onclick="showWhatsNew(true)">ATLAS · <span id="verLbl"></span> · what's new</div>
   </aside>
 
   <main class="main" id="main"><!-- sections injected --></main>
@@ -218,6 +233,9 @@ const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=nu
 const today=()=>new Date();
 const daysFromNow=d=>{const x=new Date();x.setDate(x.getDate()+d);return x.toISOString().slice(0,10);};
 const sumBy=(a,f)=>a.reduce((s,x)=>s+(+f(x)||0),0);
+const ord=n=>{n=+n;const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0]);};
+function nextDom(day){if(!day)return null;const now=new Date();now.setHours(0,0,0,0);let d=new Date(now.getFullYear(),now.getMonth(),day);if(d<now)d=new Date(now.getFullYear(),now.getMonth()+1,day);return d;}
+function daysUntil(d){if(!d)return null;const now=new Date();now.setHours(0,0,0,0);return Math.max(0,Math.round((d-now)/86400000));}
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2200);}
 
 /* ---------- SEED (reconstructed to match the PDF totals) ---------- */
@@ -235,13 +253,17 @@ function seed(){
     vacations:[],
     cars:[],
     lifestyle:[],
+    receivables:[],
+    meta:{lastSeenVersion:null},
     vaultEnc:null
   };
 }
 
 let DB = load();
 function load(){try{const r=localStorage.getItem(LS_KEY);return r?JSON.parse(r):seed();}catch(e){return seed();}}
-function save(){localStorage.setItem(LS_KEY,JSON.stringify(DB));}
+if(!DB.receivables)DB.receivables=[];
+if(!DB.meta)DB.meta={lastSeenVersion:'1.5.0'};
+function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(DB));return true;}catch(e){return false;}}
 function uid(){return 'x'+Math.random().toString(36).slice(2,9);}
 
 /* ---------- DERIVED METRICS ---------- */
@@ -311,17 +333,13 @@ function repaymentOrder(method){
   return [...nonRel.filter(d=>d.rate>0), ...rel, ...nonRel.filter(d=>d.rate===0)];
 }
 function forecast(method,extra){
-  const order=repaymentOrder(method);
-  let debts=order.map(d=>({...d}));
+  let debts=DB.loans.map(d=>({...d}));
+  debts.sort(method==='snowball'?(a,b)=>a.balance-b.balance:(a,b)=>(b.rate-a.rate)||(b.balance-a.balance));
   let mo=0, interestPaid=0;
   while(debts.some(d=>d.balance>0.5) && mo<600){
     mo++;
-    // accrue interest
     debts.forEach(d=>{if(d.balance>0){const i=d.balance*(d.rate/100/12);d.balance+=i;interestPaid+=i;}});
-    // pay minimums to relationship loans (token fairness) then dump extra on first active
     let pool=extra;
-    // relationship trickle (₹5k each / mo, capped)
-    debts.filter(d=>d.relationship&&d.balance>0).forEach(d=>{const p=Math.min(d.balance,5000,pool);d.balance-=p;pool-=p;});
     for(const d of debts){if(pool<=0)break;if(d.balance>0){const p=Math.min(d.balance,pool);d.balance-=p;pool-=p;}}
   }
   const end=new Date();end.setMonth(end.getMonth()+mo);
@@ -394,15 +412,61 @@ const M=()=>metrics();
 function render(){
   const view=document.body.dataset.view||'overview';
   $('#main').innerHTML='';
-  ({overview:vOverview,advisor:vAdvisor,debts:vDebts,repay:vRepay,cards:vCards,subs:vSubs,
+  ({home:vHome,overview:vOverview,advisor:vAdvisor,debts:vDebts,owed:vOwed,repay:vRepay,cards:vCards,subs:vSubs,
     networth:vNet,goals:vGoals,calendar:vCal,vacation:vVac,garage:vGarage,lifestyle:vLife,
-    cardvault:vCardVault,loginvault:vLoginVault}[view]||vOverview)();
+    cardvault:vCardVault,loginvault:vLoginVault}[view]||vHome)();
   // animate bars
   setTimeout(()=>document.querySelectorAll('.bar>span[data-w]').forEach(s=>s.style.width=s.dataset.w),30);
 }
 function header(title,sub,chip){
   return `<div class="head"><div><h1>${title}</h1><p>${sub}</p></div>
     <div class="chips">${chip||''}<span class="chip">${today().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span></div></div>`;
+}
+
+/* ---- HOME (motivational landing) ---- */
+function vHome(){
+  const m=M(),h=healthScore();const main=$('#main');
+  const hr=new Date().getHours();
+  const greet=hr<12?'Good morning':hr<17?'Good afternoon':'Good evening';
+  const quotes=['Small, steady steps build big freedom.','Every payment is a vote for your future self.','Wealth is built quietly — one good decision at a time.','Progress over perfection. You\'re moving forward.','Discipline today is freedom tomorrow.','You don\'t need to be rich to start — you start to become rich.','The calm comes from being in control of your money.'];
+  const q=quotes[new Date().getDate()%quotes.length];
+  main.innerHTML=`<div class="head"><div><h1>${greet}</h1><p>${q}</p></div>
+    <div class="chips"><span class="chip">${today().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'})}</span></div></div>`;
+
+  const hero=el('div','card');
+  hero.innerHTML=`<div class="lbl">Your Net Worth</div>
+    <div class="kpi val-green">${fmtL(m.networth)}</div>
+    <div class="sub">${m.dfreeMonths>0?`Debt-free target · <b class="val-gold">${m.dfree.toLocaleDateString('en-IN',{month:'short',year:'numeric'})}</b>`:'You\'re debt-free 🎉'} · Health ${h.score}/100</div>`;
+  main.appendChild(hero);
+
+  const g=el('div','grid g2');g.style.marginTop='16px';
+  g.innerHTML=
+    `<div class="card"><div class="lbl">This month you can save</div><div class="kpi sm ${m.surplus<0?'val-red':'val-green'}">${fmt(Math.max(0,m.surplus))}</div><div class="sub">${m.surplus<0?'a little tight — trim somewhere':'after everything is covered'}</div></div>`+
+    `<div class="card"><div class="lbl">Going toward goals</div><div class="kpi sm val-gold">${fmt(m.goals)}/mo</div><div class="sub">${DB.goals.length} goal${DB.goals.length!==1?'s':''} in motion</div></div>`;
+  main.appendChild(g);
+
+  const gc=el('div','card');gc.style.marginTop='16px';
+  if(DB.goals.length){
+    gc.innerHTML=`<div class="sectit" style="margin:0 0 14px">Your Goals <small>KEEP GOING</small></div>`+
+      [...DB.goals].sort((a,b)=>a.priority-b.priority).slice(0,4).map(go=>{const pct=Math.min(100,Math.round(go.saved/Math.max(1,go.target)*100));return `<div style="margin-bottom:14px"><div class="list-row" style="border:none;padding:0 0 6px"><span>${go.name}</span><span class="num">${pct}%</span></div><div class="bar green"><span data-w="${pct}%" style="width:0"></span></div></div>`;}).join('')+
+      `<button class="btn sm" onclick="go('goals')" style="margin-top:4px">Manage goals</button>`;
+  }else{
+    gc.innerHTML=`<div class="lbl">Set your first goal</div><p class="sub" style="margin:8px 0 12px">A clear target makes saving easier — an emergency fund, a trip, new wheels. Pick one to aim at.</p><button class="btn gold sm" onclick="go('goals')">+ Add a goal</button>`;
+  }
+  main.appendChild(gc);
+
+  const soon=upcoming().filter(p=>p.due<=7);
+  const cu=el('div','card');cu.style.marginTop='16px';
+  cu.innerHTML=`<div class="sectit" style="margin:0 0 14px">Coming Up <small>NEXT 7 DAYS</small></div>`+
+    (soon.length?soon.map(p=>`<div class="list-row"><div><div>${p.name}</div><div class="muted" style="font-size:11.5px">${p.kind}${p.card?' · '+p.card:''}</div></div><div style="text-align:right"><div class="num">${fmt(p.amount)}</div><div class="muted" style="font-size:11.5px;${p.due<=1?'color:var(--amber)':''}">${p.due<=0?'today':p.due===1?'tomorrow':'in '+p.due+'d'}</div></div></div>`).join('')
+      :'<div class="empty">Nothing due in the next 7 days — breathe easy.</div>');
+  main.appendChild(cu);
+
+  const nudge=el('div','card');nudge.style.marginTop='16px';
+  const msg=h.score>=70?'Your finances are in healthy shape — keep the momentum.':h.score>=50?'You\'re on track. A few small tweaks will lift your score.':'One step at a time. Start with your highest-interest debt and the rest follows.';
+  nudge.innerHTML=`<div class="insight" style="margin:0"><div class="n">✦</div><div><h4>${msg}</h4><p>See the full picture in the AI Advisor, or the detailed numbers in Overview.</p></div></div>
+    <div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm" onclick="go('overview')">Overview</button><button class="btn sm" onclick="go('advisor')">AI Advisor</button></div>`;
+  main.appendChild(nudge);
 }
 
 /* ---- OVERVIEW ---- */
@@ -489,9 +553,17 @@ function donut(segs,center,label){
   return `<div class="center-abs gauge"><svg class="donut" width="140" height="140">${circles}</svg>
     <div class="center-txt"><div><div class="num" style="font-size:15px">${center}</div><div class="muted" style="font-size:9px;letter-spacing:1.5px">${label}</div></div></div></div>`;
 }
+function nextYmd(month,day){const now=new Date();now.setHours(0,0,0,0);let d=new Date(now.getFullYear(),month-1,day);if(d<now)d=new Date(now.getFullYear()+1,month-1,day);return d;}
+function subDate(s){
+  if(s.freq==='monthly'&&s.day)return nextDom(s.day);
+  if(s.freq==='yearly'&&s.day&&s.month)return nextYmd(s.month,s.day);
+  if(s.due!=null){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+s.due);return d;}
+  return null;
+}
+function subDays(s){const d=subDate(s);return d!=null?daysUntil(d):30;}
 function upcoming(){
-  const a=[...DB.subs.map(s=>({name:s.name,amount:s.amount,due:s.due,card:s.card,kind:'Subscription'})),
-           ...DB.emis.map(e=>({name:e.name,amount:e.amount,due:e.due,card:e.card,kind:'EMI'}))];
+  const a=[...DB.subs.map(s=>({name:s.name,amount:s.amount,due:subDays(s),date:subDate(s),card:s.card,kind:'Subscription'})),
+           ...DB.emis.map(e=>{const dd=e.due!=null?e.due:5;return {name:e.name,amount:e.amount,due:dd,card:e.card,kind:'EMI'};})];
   return a.sort((x,y)=>x.due-y.due);
 }
 
@@ -561,11 +633,11 @@ function vDebts(){
       <td><span class="pill ${l.scope==='business'?'biz':'per'}">${l.scope}</span>${l.relationship?' <span class="pill warn">F&amp;F</span>':''}</td>
       <td class="num ${l.rate>=12?'val-red':''}">${l.rate}%</td>
       <td class="num">${fmt(l.balance)}</td>
-      <td class="muted" style="font-size:12px">${l.relationship?new Date(l.lastPaid).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—'}</td>
-      <td style="text-align:right">${l.relationship?`<button class="btn sm" onclick="markPaid('${l.id}')">Mark paid</button> `:''}<button class="btn sm danger" onclick="delLoan('${l.id}')">✕</button></td>
+      <td class="muted" style="font-size:12px">${l.lastPaid?new Date(l.lastPaid).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—'}</td>
+      <td style="text-align:right"><button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button> <button class="btn sm danger" onclick="delLoan('${l.id}')">✕</button></td>
    </tr>`).join('')}
    </tbody></table>
-   <div class="muted" style="font-size:12px;margin-top:12px">Friends &amp; family are rotated by who was paid <b>least recently</b> — "Mark paid" updates the fairness queue.</div>`;
+   <div class="muted" style="font-size:12px;margin-top:12px">Tap <b>Record payment</b> on any debt to enter what you paid — it's subtracted from that balance. For friends &amp; family, paying also moves them to the back of the queue so everyone gets paid in turn.</div>`;
   main.appendChild(card);
 
   const tot=el('div','grid g3');tot.style.marginTop='16px';
@@ -574,7 +646,21 @@ function vDebts(){
     kpi('Avg Interest',m.rAvg.toFixed(1)+'%','weighted by balance','val-gold');
   main.appendChild(tot);
 }
-function markPaid(id){const l=DB.loans.find(x=>x.id===id);if(l){l.lastPaid=new Date().toISOString().slice(0,10);save();render();toast('Fairness queue updated');}}
+function payLoan(id){
+  const l=DB.loans.find(x=>x.id===id);if(!l)return;
+  modal('Record payment',`
+    <p class="muted" style="font-size:13px;margin-bottom:12px">${l.name} — current balance <b class="num" style="color:var(--txt)">${fmt(l.balance)}</b></p>
+    <div class="field"><label>Amount paid ₹</label><input id="payamt" type="number" inputmode="numeric" placeholder="e.g. 5000"></div>
+    <button class="btn gold" style="width:100%" onclick="confirmPay('${id}')">Subtract from balance</button>`);
+}
+function confirmPay(id){
+  const l=DB.loans.find(x=>x.id===id);const amt=+$('#payamt').value||0;
+  if(amt<=0){toast('Enter an amount');return;}
+  l.balance=Math.max(0,l.balance-amt);
+  l.lastPaid=new Date().toISOString().slice(0,10);
+  save();closeModal();render();
+  toast(fmt(amt)+' paid · balance now '+fmt(l.balance));
+}
 function delLoan(id){DB.loans=DB.loans.filter(l=>l.id!==id);save();render();}
 function addLoan(){
   modal('Add loan',`
@@ -612,12 +698,17 @@ function vRepay(){
   // comparison
   const cmp=el('div','card');cmp.style.marginTop='16px';
   const av=forecast('avalanche',DB.plan.extraRepayment), sb=forecast('snowball',DB.plan.extraRepayment);
+  const saved=sb.interest-av.interest;
   cmp.innerHTML=`<div class="sectit" style="margin:0 0 14px">Avalanche vs Snowball <small>AT ${fmt(DB.plan.extraRepayment)}/MO</small></div>
    <table><thead><tr><th>Strategy</th><th>Debt-free</th><th>Months</th><th>Interest paid</th></tr></thead><tbody>
    <tr><td>Avalanche</td><td class="num">${av.end.toLocaleDateString('en-IN',{month:'short',year:'numeric'})}</td><td class="num">${av.months}</td><td class="num val-red">${fmt(av.interest)}</td></tr>
    <tr><td>Snowball</td><td class="num">${sb.end.toLocaleDateString('en-IN',{month:'short',year:'numeric'})}</td><td class="num">${sb.months}</td><td class="num val-red">${fmt(sb.interest)}</td></tr>
    </tbody></table>
-   <div class="muted" style="font-size:12px;margin-top:12px">Avalanche saves you ${fmt(Math.max(0,sb.interest-av.interest))} in interest vs snowball.</div>`;
+   <div class="muted" style="font-size:12.5px;margin-top:12px">${
+     DB.plan.extraRepayment<=0 ? 'Set an extra repayment amount above to see the forecast.' :
+     saved>0 ? `Both finish around the same date — payoff <b>time</b> depends on how much you pay monthly, not the order. The real difference is <b>interest</b>: <b class="val-green">avalanche saves ${fmt(saved)}</b> by clearing your highest-rate debt first.` :
+     'Your debts have little or no interest-rate spread (mostly 0% or equal rates), so both strategies come out the same here — just stay consistent.'
+   }</div>`;
   main.appendChild(cmp);
 }
 function renderForecast(extra){
@@ -643,23 +734,47 @@ function vCards(){
   main.appendChild(guard);
 
   const g=el('div','grid g3');g.style.marginTop='16px';
-  g.innerHTML=DB.cards.map(c=>{const u=c.limit?Math.round(c.balance/c.limit*100):0;return `<div class="card">
+  g.innerHTML=DB.cards.map(c=>{const u=c.limit?Math.round(c.balance/c.limit*100):0;
+    const bills=c.bills||[];const unpaid=bills.filter(b=>!b.paid);
+    const nextDue=unpaid.map(b=>b.due).sort()[0];
+    const cyc=`Bill ${c.statementDay?'day '+c.statementDay:'—'} · Due ${c.dueDay?'day '+c.dueDay:'—'}`;
+    return `<div class="card">
     <div class="lbl">${c.name} <span class="pill ${c.scope==='business'?'biz':'per'}">${c.scope}</span></div>
     <div class="muted" style="font-size:12px;margin-top:4px">${[c.bank,c.last4?'•••• '+c.last4:'',c.network].filter(Boolean).join(' · ')||'—'}</div>
     <div class="kpi sm">${fmt(c.balance)}</div>
     <div class="bar ${u<=30?'green':u<=50?'':'red'}"><span data-w="${Math.min(100,u)}%" style="width:0"></span></div>
     <div class="sub" style="margin-top:8px">${u}% of ${fmt(c.limit)}</div>
-    <div style="margin-top:12px"><button class="btn sm" onclick="editCard('${c.id}')">Edit</button> <button class="btn sm danger" onclick="delCard('${c.id}')">✕</button></div>
-  </div>`;}).join('');
+    <div class="muted" style="font-size:11.5px;margin-top:8px">${cyc}${unpaid.length?` · <span class="val-red">${unpaid.length} bill${unpaid.length>1?'s':''} due ${fmt(sumBy(unpaid,b=>b.amount))}</span>`:''}</div>
+    ${nextDue?`<div class="muted" style="font-size:11.5px">Next due ${new Date(nextDue).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</div>`:''}
+    <div style="margin-top:12px"><button class="btn sm gold" onclick="cardBills('${c.id}')">Bills</button> <button class="btn sm" onclick="editCard('${c.id}')">Edit</button> <button class="btn sm danger" onclick="delCard('${c.id}')">✕</button></div>
+  </div>`;}).join('')||'<div class="empty">No cards yet — tap “+ Add card”.</div>';
   main.appendChild(g);
 
   const e=el('div','card');e.style.marginTop='16px';
   e.innerHTML=`<div class="sectit" style="margin:0 0 14px">Active EMIs <small>${fmt(m.emiOut)}/MO</small></div>
-    <table><thead><tr><th>EMI</th><th>Card</th><th>Amount</th><th>Months left</th></tr></thead><tbody>
-    ${DB.emis.map(x=>`<tr><td>${x.name} <span class="pill ${x.scope==='business'?'biz':'per'}">${x.scope}</span></td><td class="muted">${x.card}</td><td class="num">${fmt(x.amount)}</td><td class="num">${x.months}</td></tr>`).join('')}
-    </tbody></table>`;
+    <div style="margin-bottom:12px"><button class="btn sm gold" onclick="addEMI()">+ Add EMI</button></div>
+    <table><thead><tr><th>EMI</th><th>Card</th><th>Monthly</th><th>Left</th><th>Remaining</th><th></th></tr></thead><tbody>
+    ${DB.emis.map(x=>`<tr><td>${x.name} <span class="pill ${x.scope==='business'?'biz':'per'}">${x.scope}</span></td><td class="muted">${x.card||'—'}</td><td class="num">${fmt(x.amount)}</td><td class="num">${x.months} mo</td><td class="num val-gold">${fmt(x.amount*x.months)}</td><td style="text-align:right"><button class="btn sm danger" onclick="delEMI('${x.id}')">✕</button></td></tr>`).join('')||'<tr><td colspan="6" class="empty">No EMIs yet.</td></tr>'}
+    </tbody></table>
+    ${(()=>{const byCard={};DB.emis.forEach(x=>{const k=x.card||'—';byCard[k]=byCard[k]||{mo:0,rem:0};byCard[k].mo+=x.amount;byCard[k].rem+=x.amount*x.months;});const ks=Object.keys(byCard);return ks.length?`<div class="muted" style="font-size:12px;margin-top:12px">By card — ${ks.map(k=>`<b>${k}</b>: ${fmt(byCard[k].mo)}/mo, ${fmt(byCard[k].rem)} left`).join(' · ')}</div>`:'';})()}`;
   main.appendChild(e);
 }
+function addEMI(){
+  if(!DB.cards.length){toast('Add a card first');return;}
+  modal('Add EMI',`
+   <div class="field"><label>EMI name</label><input id="en" placeholder="e.g. MacBook Pro EMI"></div>
+   <div class="field"><label>On card</label><select id="ec">${DB.cards.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select></div>
+   <div class="row"><div class="field"><label>Monthly amount ₹</label><input id="ea" type="number"></div>
+   <div class="field"><label>Months left</label><input id="em" type="number" value="6"></div></div>
+   <div class="field"><label>Due in (days)</label><input id="ed" type="number" value="5"></div>
+   <button class="btn gold" style="width:100%" onclick="saveEMI()">Save</button>`);
+}
+function saveEMI(){
+  const card=DB.cards.find(c=>c.id===$('#ec').value);
+  DB.emis.push({id:uid(),name:$('#en').value||'EMI',card:card?card.name:'',scope:card?card.scope:'business',amount:+$('#ea').value||0,due:+$('#ed').value||5,months:+$('#em').value||0});
+  save();closeModal();render();
+}
+function delEMI(id){DB.emis=DB.emis.filter(e=>e.id!==id);save();render();}
 function addCard(){modal('Add card',`
   <div class="field"><label>Card name</label><input id="cn" placeholder="e.g. HDFC Infinia"></div>
   <div class="row"><div class="field"><label>Bank / issuer</label><input id="cbk" placeholder="HDFC Bank"></div>
@@ -667,10 +782,12 @@ function addCard(){modal('Add card',`
   <div class="field"><label>Last 4 digits</label><input id="c4" inputmode="numeric" maxlength="4" placeholder="1234"></div>
   <div class="row"><div class="field"><label>Credit limit ₹</label><input id="cl" type="number"></div>
   <div class="field"><label>Current balance ₹</label><input id="cb" type="number"></div></div>
+  <div class="row"><div class="field"><label>Statement day (1-31)</label><input id="csd" type="number" min="1" max="31" placeholder="5"></div>
+  <div class="field"><label>Payment due day (1-31)</label><input id="cdd" type="number" min="1" max="31" placeholder="25"></div></div>
   <div class="field"><label>Scope</label><select id="cs"><option value="business">Business</option><option value="personal">Personal</option></select></div>
-  <p class="muted" style="font-size:11.5px;margin-bottom:12px">Full card number &amp; CVV go in the encrypted <b>Card Vault</b> (Secure Vault menu) — this screen only tracks balance vs limit.</p>
+  <p class="muted" style="font-size:11.5px;margin-bottom:12px">Full card number &amp; CVV go in the encrypted <b>Card Vault</b> (Secure Vault menu) — this screen only tracks balance, limit &amp; bills.</p>
   <button class="btn gold" style="width:100%" onclick="saveCard()">Save</button>`);}
-function saveCard(){DB.cards.push({id:uid(),name:$('#cn').value||'Card',bank:$('#cbk').value||'',network:$('#cnet').value||'',last4:($('#c4').value||'').replace(/\D/g,'').slice(-4),limit:+$('#cl').value||0,balance:+$('#cb').value||0,scope:$('#cs').value});save();closeModal();render();}
+function saveCard(){DB.cards.push({id:uid(),name:$('#cn').value||'Card',bank:$('#cbk').value||'',network:$('#cnet').value||'',last4:($('#c4').value||'').replace(/\D/g,'').slice(-4),limit:+$('#cl').value||0,balance:+$('#cb').value||0,statementDay:+$('#csd').value||0,dueDay:+$('#cdd').value||0,scope:$('#cs').value,bills:[]});save();closeModal();render();}
 function editCard(id){const c=DB.cards.find(x=>x.id===id);modal('Edit card',`
   <div class="field"><label>Card name</label><input id="cn" value="${c.name||''}"></div>
   <div class="row"><div class="field"><label>Bank / issuer</label><input id="cbk" value="${c.bank||''}"></div>
@@ -678,8 +795,46 @@ function editCard(id){const c=DB.cards.find(x=>x.id===id);modal('Edit card',`
   <div class="field"><label>Last 4 digits</label><input id="c4" inputmode="numeric" maxlength="4" value="${c.last4||''}"></div>
   <div class="row"><div class="field"><label>Current balance ₹</label><input id="cb" type="number" value="${c.balance}"></div>
   <div class="field"><label>Credit limit ₹</label><input id="cl" type="number" value="${c.limit}"></div></div>
+  <div class="row"><div class="field"><label>Statement day (1-31)</label><input id="csd" type="number" min="1" max="31" value="${c.statementDay||''}"></div>
+  <div class="field"><label>Payment due day (1-31)</label><input id="cdd" type="number" min="1" max="31" value="${c.dueDay||''}"></div></div>
   <button class="btn gold" style="width:100%" onclick="updCard('${id}')">Save</button>`);}
-function updCard(id){const c=DB.cards.find(x=>x.id===id);c.name=$('#cn').value||c.name;c.bank=$('#cbk').value;c.network=$('#cnet').value;c.last4=($('#c4').value||'').replace(/\D/g,'').slice(-4);c.balance=+$('#cb').value;c.limit=+$('#cl').value;save();closeModal();render();}
+function updCard(id){const c=DB.cards.find(x=>x.id===id);c.name=$('#cn').value||c.name;c.bank=$('#cbk').value;c.network=$('#cnet').value;c.last4=($('#c4').value||'').replace(/\D/g,'').slice(-4);c.balance=+$('#cb').value;c.limit=+$('#cl').value;c.statementDay=+$('#csd').value||0;c.dueDay=+$('#cdd').value||0;save();closeModal();render();}
+/* ---- card bills ---- */
+function cardBills(id){
+  const c=DB.cards.find(x=>x.id===id);if(!c.bills)c.bills=[];
+  const rows=c.bills.slice().sort((a,b)=>new Date(b.due)-new Date(a.due)).map(b=>`
+    <div class="list-row">
+      <div><div>${b.period} <span class="pill ${b.paid?'ok':'crit'}">${b.paid?'paid':'due'}</span></div>
+      <div class="muted" style="font-size:11px">due ${new Date(b.due).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}${b.paid&&b.paidOn?' · paid '+new Date(b.paidOn).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):''}</div></div>
+      <div style="text-align:right;white-space:nowrap"><div class="num">${fmt(b.amount)}</div>${b.paid?'':`<button class="btn sm" onclick="payBill('${id}','${b.id}')">Mark paid</button>`} <button class="btn sm danger" onclick="delBill('${id}','${b.id}')">✕</button></div>
+    </div>`).join('')||'<div class="empty">No bills logged yet.</div>';
+  modal(c.name+' — Bills',`
+    <button class="btn gold sm" onclick="addBill('${id}')">+ Log a bill</button>
+    <p class="muted" style="font-size:11.5px;margin:12px 0 6px">Log each statement when it generates; tap “Mark paid” when you pay it — that lowers this card’s balance.</p>
+    <div>${rows}</div>`);
+}
+function addBill(id){
+  const c=DB.cards.find(x=>x.id===id);const now=new Date();
+  let due=new Date(now.getFullYear(),now.getMonth(),c.dueDay||now.getDate());
+  if(due<now)due.setMonth(due.getMonth()+1);
+  modal('Log a bill — '+c.name,`
+   <div class="field"><label>Statement period</label><input id="bp" value="${now.toLocaleDateString('en-IN',{month:'short',year:'numeric'})}"></div>
+   <div class="field"><label>Bill amount ₹</label><input id="ba" type="number" value="${c.balance||''}"></div>
+   <div class="field"><label>Due date</label><input id="bd" type="date" value="${due.toISOString().slice(0,10)}"></div>
+   <button class="btn gold" style="width:100%" onclick="saveBill('${id}')">Save bill</button>`);
+}
+function saveBill(id){
+  const c=DB.cards.find(x=>x.id===id);if(!c.bills)c.bills=[];
+  c.bills.push({id:uid(),period:$('#bp').value||'',amount:+$('#ba').value||0,due:$('#bd').value||new Date().toISOString().slice(0,10),paid:false,paidOn:null});
+  save();cardBills(id);
+}
+function payBill(cardId,billId){
+  const c=DB.cards.find(x=>x.id===cardId);const b=c.bills.find(x=>x.id===billId);if(!b)return;
+  b.paid=true;b.paidOn=new Date().toISOString().slice(0,10);
+  c.balance=Math.max(0,(c.balance||0)-b.amount);
+  save();cardBills(cardId);toast('Bill paid · balance now '+fmt(c.balance));
+}
+function delBill(cardId,billId){const c=DB.cards.find(x=>x.id===cardId);c.bills=c.bills.filter(x=>x.id!==billId);save();cardBills(cardId);}
 function delCard(id){DB.cards=DB.cards.filter(c=>c.id!==id);save();render();}
 
 /* ---- SUBSCRIPTIONS ---- */
@@ -693,19 +848,24 @@ function vSubs(){
     kpi('Personal',fmt(sumBy(per,s=>s.amount)),`${per.length} subs`,'val-blue');
   main.appendChild(top);
   const c=el('div','card');c.style.marginTop='16px';
-  c.innerHTML=`<table><thead><tr><th>Service</th><th>Card</th><th>Scope</th><th>Next</th><th>Amount</th><th></th></tr></thead><tbody>
-   ${[...DB.subs].sort((a,b)=>a.due-b.due).map(s=>`<tr><td>${s.name}</td><td class="muted">${s.card}</td><td><span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></td><td class="muted">in ${s.due}d</td><td class="num">${fmt(s.amount)}</td><td style="text-align:right"><button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></td></tr>`).join('')}
+  c.innerHTML=`<table><thead><tr><th>Service</th><th>Paid with</th><th>Scope</th><th>Next charge</th><th>Amount</th><th></th></tr></thead><tbody>
+   ${[...DB.subs].sort((a,b)=>subDays(a)-subDays(b)).map(s=>{const nd=subDate(s);return `<tr><td>${s.name}</td><td class="muted">${s.card||'—'}</td><td><span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></td><td class="muted">${nd?nd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—'}${s.freq==='yearly'?' · yearly':' · monthly'}</td><td class="num">${fmt(s.amount)}</td><td style="text-align:right"><button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></td></tr>`;}).join('')||'<tr><td colspan="6" class="empty">No subscriptions yet.</td></tr>'}
    </tbody></table>`;
   main.appendChild(c);
 }
-function addSub(){modal('Add subscription',`
+function addSub(){
+  const cardOpts=DB.cards.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  modal('Add subscription',`
   <div class="field"><label>Name</label><input id="sn"></div>
-  <div class="row"><div class="field"><label>Amount ₹</label><input id="sa" type="number"></div>
-  <div class="field"><label>Due in (days)</label><input id="sd" type="number" value="30"></div></div>
-  <div class="row"><div class="field"><label>Card</label><input id="sc" placeholder="HDFC Infinia"></div>
-  <div class="field"><label>Scope</label><select id="ss"><option value="business">Business</option><option value="personal">Personal</option></select></div></div>
+  <div class="field"><label>Amount ₹</label><input id="sa" type="number"></div>
+  <div class="row"><div class="field"><label>Billing</label><select id="sf"><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></div>
+  <div class="field"><label>Day (1-31)</label><input id="sday" type="number" min="1" max="31" placeholder="5"></div></div>
+  <div class="field"><label>Month (for yearly)</label><select id="smon"><option value="0">— (monthly)</option>${months.map((mn,i)=>`<option value="${i+1}">${mn}</option>`).join('')}</select></div>
+  <div class="field"><label>Paid with</label><select id="sc">${cardOpts}<option value="Debit card">Debit card</option><option value="UPI / Bank">UPI / Bank auto-debit</option><option value="">Other</option></select></div>
+  <div class="field"><label>Scope</label><select id="ss"><option value="business">Business</option><option value="personal">Personal</option></select></div>
   <button class="btn gold" style="width:100%" onclick="saveSub()">Save</button>`);}
-function saveSub(){DB.subs.push({id:uid(),name:$('#sn').value||'Sub',amount:+$('#sa').value||0,due:+$('#sd').value||30,card:$('#sc').value||'',scope:$('#ss').value});save();closeModal();render();}
+function saveSub(){DB.subs.push({id:uid(),name:$('#sn').value||'Sub',amount:+$('#sa').value||0,freq:$('#sf').value,day:+$('#sday').value||1,month:+$('#smon').value||0,card:$('#sc').value||'',scope:$('#ss').value});save();closeModal();render();}
 function delSub(id){DB.subs=DB.subs.filter(s=>s.id!==id);save();render();}
 
 /* ---- NET WORTH ---- */
@@ -732,34 +892,140 @@ function saveAsset(){DB.assets.push({id:uid(),name:$('#an').value||'Asset',type:
 function delAsset(id){DB.assets=DB.assets.filter(a=>a.id!==id);save();render();}
 
 /* ---- GOALS ---- */
+function goalSaved(g){return (g.contributions&&g.contributions.length)?sumBy(g.contributions,c=>c.amount):(g.saved||0);}
 function vGoals(){
-  const main=$('#main');const m=M();
-  main.innerHTML=header('Goals','With feasibility checker',`<span class="chip gold" onclick="addGoal()" style="cursor:pointer">+ Add goal</span>`);
-  const planned=sumBy(DB.goals,g=>g.monthly);
-  const feasible=planned<=m.surplus+m.goals;
+  const main=$('#main');
+  main.innerHTML=header('Goals','Save toward what matters',`<span class="chip gold" onclick="addGoal()" style="cursor:pointer">+ Add goal</span>`);
+  if(!DB.goals.length){const e=el('div','card');e.innerHTML='<div class="empty">No goals yet — tap “+ Add goal”.</div>';main.appendChild(e);return;}
+  const totSaved=sumBy(DB.goals,g=>goalSaved(g)), totTarget=sumBy(DB.goals,g=>g.target);
+  const where={};DB.goals.forEach(g=>(g.contributions||[]).forEach(ct=>{const k=ct.where||'Unspecified';where[k]=(where[k]||0)+(+ct.amount||0);}));
   const top=el('div','card');
-  top.innerHTML=`<div class="lbl">Feasibility Check</div>
-    <div class="kpi sm ${feasible?'val-green':'val-red'}">${feasible?'On track':'Over budget'}</div>
-    <div class="sub">Planned ${fmt(planned)}/mo vs ${fmt(m.goals+Math.max(0,m.surplus))} available. ${feasible?'Your goals fit your surplus.':'Trim '+fmt(planned-(m.goals+Math.max(0,m.surplus)))+'/mo or extend timelines.'}</div>`;
+  top.innerHTML=`<div class="lbl">Saved across all goals</div>
+    <div class="kpi sm val-green">${fmtL(totSaved)} <span class="muted" style="font-size:14px">/ ${fmtL(totTarget)}</span></div>
+    <div class="bar green"><span data-w="${totTarget?Math.min(100,Math.round(totSaved/totTarget*100)):0}%" style="width:0"></span></div>
+    ${Object.keys(where).length?`<div class="muted" style="font-size:12.5px;margin-top:12px">Where it sits — ${Object.entries(where).map(([k,v])=>`<b>${k}</b>: ${fmt(v)}`).join(' · ')}</div>`:''}`;
   main.appendChild(top);
-  const g=el('div','grid g2');g.style.marginTop='16px';
-  g.innerHTML=DB.goals.sort((a,b)=>a.priority-b.priority).map(go=>{const pct=Math.min(100,Math.round(go.saved/go.target*100));const left=go.target-go.saved;const mos=go.monthly>0?Math.ceil(left/go.monthly):'∞';return `<div class="card">
-    <div class="lbl">${go.name} <span class="pill ${go.priority===1?'crit':go.priority===2?'warn':'ok'}">P${go.priority}</span></div>
-    <div class="kpi sm">${fmtL(go.saved)} <span class="muted" style="font-size:14px">/ ${fmtL(go.target)}</span></div>
-    <div class="bar green"><span data-w="${pct}%" style="width:0"></span></div>
-    <div class="sub" style="margin-top:8px">${pct}% · ${fmt(go.monthly)}/mo · ~${mos} mo to go</div>
-    <div style="margin-top:12px"><button class="btn sm danger" onclick="delGoal('${go.id}')">✕</button></div></div>`;}).join('');
-  main.appendChild(g);
+  const pool=DB.plan.goalContribution||0;
+  const alloc=allocateGoals(pool);
+  const totNeed=sumBy(DB.goals,g=>Math.max(0,(g.target||0)-goalSaved(g)));
+  const plan=el('div','card');plan.style.marginTop='16px';
+  plan.innerHTML=`<div class="lbl">Monthly savings plan</div>
+    <label style="display:block;margin:10px 0 4px;font-size:12.5px;color:var(--txt2)">If you can set aside <b class="val-gold num" id="poolLbl">${fmt(pool)}</b> a month:</label>
+    <input class="range" type="range" min="0" max="200000" step="2500" value="${pool}" oninput="poolPreview(this.value)" onchange="commitPool(this.value)">
+    <div class="muted" style="font-size:12px;margin-top:8px">${pool>0?'Priority decides the order — P1 goals fill first, then P2, then P3. Suggested splits show on each goal below.':'Set an amount to see how priority splits it across your goals.'}${totNeed>0&&pool>0?` At this rate you clear all targets in ~${Math.ceil(totNeed/pool)} months.`:''}</div>`;
+  main.appendChild(plan);
+  [...DB.goals].sort((a,b)=>a.priority-b.priority).forEach(go=>{
+    const saved=goalSaved(go);const pct=go.target?Math.min(100,Math.round(saved/go.target*100)):0;const left=Math.max(0,go.target-saved);
+    const gw={};(go.contributions||[]).forEach(ct=>{const k=ct.where||'Unspecified';gw[k]=(gw[k]||0)+(+ct.amount||0);});
+    const recent=[...(go.contributions||[])].slice(-3).reverse();
+    const c=el('div','card');c.style.marginTop='16px';
+    c.innerHTML=`<div class="lbl">${go.name} <span class="pill ${go.priority===1?'crit':go.priority===2?'warn':'ok'}">P${go.priority}</span></div>
+      <div class="kpi sm">${fmtL(saved)} <span class="muted" style="font-size:14px">/ ${fmtL(go.target)}</span></div>
+      <div class="bar green"><span data-w="${pct}%" style="width:0"></span></div>
+      <div class="sub" style="margin-top:8px">${pct}% · ${fmt(left)} to go</div>
+      ${Object.keys(gw).length?`<div class="muted" style="font-size:12px;margin-top:10px">Stored in — ${Object.entries(gw).map(([k,v])=>`${k} ${fmt(v)}`).join(' · ')}</div>`:'<div class="muted" style="font-size:12px;margin-top:10px">No savings logged yet — tap “+ Log saving”.</div>'}
+      ${alloc[go.id]>0?`<div style="margin-top:10px;font-size:12.5px;color:var(--gold2)">▸ Suggested this month: <b>${fmt(alloc[go.id])}</b> <button class="btn sm" style="margin-left:6px" onclick="logSaving('${go.id}',${Math.round(alloc[go.id])})">Log it</button></div>`:''}
+      ${recent.length?`<div style="margin-top:8px">${recent.map(ct=>`<div class="list-row" style="padding:8px 0"><span class="muted" style="font-size:12px">${new Date(ct.date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} · ${ct.where||'—'}</span><span class="num" style="font-size:13px">${fmt(ct.amount)} <button class="btn sm danger" onclick="rmContrib('${go.id}','${ct.id}')">✕</button></span></div>`).join('')}</div>`:''}
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm gold" onclick="logSaving('${go.id}')">+ Log saving</button><button class="btn sm" onclick="editGoal('${go.id}')">Edit</button><button class="btn sm danger" onclick="delGoal('${go.id}')">Delete</button></div>`;
+    main.appendChild(c);
+  });
 }
+function logSaving(id,preset){const g=DB.goals.find(x=>x.id===id);
+  modal('Log saving',`
+   <p class="muted" style="font-size:12.5px;margin-bottom:12px">${g.name} — add money you've set aside, and where it's kept.</p>
+   <div class="field"><label>Amount ₹</label><input id="ctamt" type="number" value="${preset||''}"></div>
+   <div class="field"><label>Where is it kept?</label><input id="ctwhere" placeholder="HDFC Savings / Physical gold / SBI FD"></div>
+   <div class="field"><label>Date</label><input id="ctdate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+   <button class="btn gold" style="width:100%" onclick="saveContribution('${id}')">Add to savings</button>`);}
+function saveContribution(id){const g=DB.goals.find(x=>x.id===id);const amt=+$('#ctamt').value||0;if(amt<=0){toast('Enter an amount');return;}g.contributions=g.contributions||[];g.contributions.push({id:uid(),date:$('#ctdate').value||new Date().toISOString().slice(0,10),amount:amt,where:$('#ctwhere').value||'Unspecified'});g.saved=sumBy(g.contributions,c=>c.amount);save();closeModal();render();toast(`Logged ${fmt(amt)}`);}
+function rmContrib(gid,cid){const g=DB.goals.find(x=>x.id===gid);g.contributions=(g.contributions||[]).filter(c=>c.id!==cid);g.saved=sumBy(g.contributions,c=>c.amount);save();render();}
 function addGoal(){modal('Add goal',`
-  <div class="field"><label>Name</label><input id="gn"></div>
+  <div class="field"><label>Name</label><input id="gn" placeholder="Emergency fund / Trip / New bike"></div>
   <div class="row"><div class="field"><label>Target ₹</label><input id="gt" type="number"></div>
-  <div class="field"><label>Saved ₹</label><input id="gs" type="number" value="0"></div></div>
-  <div class="row"><div class="field"><label>Monthly ₹</label><input id="gm" type="number"></div>
-  <div class="field"><label>Priority</label><select id="gp"><option>1</option><option>2</option><option>3</option></select></div></div>
+  <div class="field"><label>Priority</label><select id="gp"><option value="1">P1 — fund first</option><option value="2">P2</option><option value="3" selected>P3</option></select></div></div>
   <button class="btn gold" style="width:100%" onclick="saveGoal()">Save</button>`);}
-function saveGoal(){DB.goals.push({id:uid(),name:$('#gn').value||'Goal',target:+$('#gt').value||0,saved:+$('#gs').value||0,monthly:+$('#gm').value||0,priority:+$('#gp').value||3});save();closeModal();render();}
+function saveGoal(){DB.goals.push({id:uid(),name:$('#gn').value||'Goal',target:+$('#gt').value||0,priority:+$('#gp').value||3,saved:0,contributions:[]});save();closeModal();render();}
+function editGoal(id){const g=DB.goals.find(x=>x.id===id);modal('Edit goal',`
+  <div class="field"><label>Name</label><input id="gn" value="${g.name||''}"></div>
+  <div class="row"><div class="field"><label>Target ₹</label><input id="gt" type="number" value="${g.target||0}"></div>
+  <div class="field"><label>Priority</label><select id="gp"><option value="1" ${g.priority===1?'selected':''}>P1 — fund first</option><option value="2" ${g.priority===2?'selected':''}>P2</option><option value="3" ${g.priority===3?'selected':''}>P3</option></select></div></div>
+  <button class="btn gold" style="width:100%" onclick="updGoal('${id}')">Save</button>`);}
+function updGoal(id){const g=DB.goals.find(x=>x.id===id);g.name=$('#gn').value||g.name;g.target=+$('#gt').value||0;g.priority=+$('#gp').value||3;save();closeModal();render();}
 function delGoal(id){DB.goals=DB.goals.filter(g=>g.id!==id);save();render();}
+
+/* ---- PRIORITY ALLOCATION (P1 funds first) ---- */
+function allocateGoals(pool){
+  const res={};let left=Math.max(0,pool||0);
+  [...DB.goals].sort((a,b)=>(a.priority-b.priority)||((b.target-goalSaved(b))-(a.target-goalSaved(a)))).forEach(g=>{
+    const need=Math.max(0,(g.target||0)-goalSaved(g));const give=Math.min(need,left);res[g.id]=give;left-=give;
+  });
+  return res;
+}
+function poolPreview(v){const e=document.getElementById('poolLbl');if(e)e.textContent=fmt(+v||0);}
+function commitPool(v){DB.plan.goalContribution=+v||0;save();render();}
+
+/* ---- OWED TO ME (receivables) ---- */
+function recvPaid(r){return sumBy(r.payments||[],p=>p.amount);}
+function recvOut(r){return Math.max(0,(r.principal||0)-recvPaid(r));}
+function vOwed(){
+  const main=$('#main');
+  main.innerHTML=header('Owed to Me','Who owes you &amp; what they\'ve repaid',`<span class="chip gold" onclick="addOwed()" style="cursor:pointer">+ Add</span>`);
+  if(!DB.receivables.length){const e=el('div','card');e.innerHTML='<div class="empty">Nothing logged yet — tap “+ Add” to record who owes you.</div>';main.appendChild(e);return;}
+  const totOut=sumBy(DB.receivables,r=>recvOut(r)),totPaid=sumBy(DB.receivables,r=>recvPaid(r)),totPrin=sumBy(DB.receivables,r=>r.principal||0);
+  const top=el('div','grid g3');
+  top.innerHTML=kpi('Outstanding',fmtL(totOut),`${DB.receivables.filter(r=>recvOut(r)>0).length} still owe you`,'val-gold')+
+    kpi('Recovered',fmtL(totPaid),'paid back so far','val-green')+
+    kpi('Total lent',fmtL(totPrin),`${DB.receivables.length} ${DB.receivables.length===1?'entry':'entries'}`,'val-blue');
+  main.appendChild(top);
+  [...DB.receivables].sort((a,b)=>recvOut(b)-recvOut(a)).forEach(r=>{
+    const out=recvOut(r),paid=recvPaid(r),pct=r.principal?Math.min(100,Math.round(paid/r.principal*100)):0;
+    const recent=[...(r.payments||[])].slice(-3).reverse();
+    const c=el('div','card');c.style.marginTop='16px';
+    c.innerHTML=`<div class="lbl">${r.person} ${out<=0?'<span class="pill ok">settled</span>':''}</div>
+      <div class="kpi sm ${out>0?'val-gold':'val-green'}">${fmt(out)} <span class="muted" style="font-size:13px">outstanding</span></div>
+      <div class="bar green"><span data-w="${pct}%" style="width:0"></span></div>
+      <div class="sub" style="margin-top:8px">${fmt(paid)} of ${fmt(r.principal)} repaid${r.note?' · '+r.note:''}</div>
+      ${recent.length?`<div style="margin-top:8px">${recent.map(p=>`<div class="list-row" style="padding:8px 0"><span class="muted" style="font-size:12px">${new Date(p.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'2-digit'})}</span><span class="num" style="font-size:13px">${fmt(p.amount)} <button class="btn sm danger" onclick="rmRecv('${r.id}','${p.id}')">✕</button></span></div>`).join('')}</div>`:''}
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm gold" onclick="recordRecv('${r.id}')">+ Record payment</button><button class="btn sm" onclick="editOwed('${r.id}')">Edit</button><button class="btn sm danger" onclick="delOwed('${r.id}')">Delete</button></div>`;
+    main.appendChild(c);
+  });
+}
+function addOwed(){modal('Add who owes you',`
+  <div class="field"><label>Person / party</label><input id="own" placeholder="Name"></div>
+  <div class="field"><label>Amount they owe ₹</label><input id="owp" type="number"></div>
+  <div class="field"><label>Note (optional)</label><input id="ownt" placeholder="what it was for"></div>
+  <button class="btn gold" style="width:100%" onclick="saveOwed()">Save</button>`);}
+function saveOwed(){DB.receivables.push({id:uid(),person:$('#own').value||'Someone',principal:+$('#owp').value||0,note:$('#ownt').value||'',payments:[]});save();closeModal();render();}
+function editOwed(id){const r=DB.receivables.find(x=>x.id===id);modal('Edit entry',`
+  <div class="field"><label>Person / party</label><input id="own" value="${r.person||''}"></div>
+  <div class="field"><label>Amount they owe ₹</label><input id="owp" type="number" value="${r.principal||0}"></div>
+  <div class="field"><label>Note</label><input id="ownt" value="${r.note||''}"></div>
+  <button class="btn gold" style="width:100%" onclick="updOwed('${id}')">Save</button>`);}
+function updOwed(id){const r=DB.receivables.find(x=>x.id===id);r.person=$('#own').value||r.person;r.principal=+$('#owp').value||0;r.note=$('#ownt').value||'';save();closeModal();render();}
+function delOwed(id){DB.receivables=DB.receivables.filter(r=>r.id!==id);save();render();}
+function recordRecv(id){const r=DB.receivables.find(x=>x.id===id);modal('Record payment',`
+  <p class="muted" style="font-size:12.5px;margin-bottom:12px">${r.person} owes ${fmt(recvOut(r))}.</p>
+  <div class="field"><label>Amount received ₹</label><input id="rva" type="number"></div>
+  <div class="field"><label>Date</label><input id="rvd" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+  <button class="btn gold" style="width:100%" onclick="saveRecv('${id}')">Add</button>`);}
+function saveRecv(id){const r=DB.receivables.find(x=>x.id===id);const amt=+$('#rva').value||0;if(amt<=0){toast('Enter an amount');return;}r.payments=r.payments||[];r.payments.push({id:uid(),date:$('#rvd').value||new Date().toISOString().slice(0,10),amount:amt});save();closeModal();render();toast(`Recorded ${fmt(amt)}`);}
+function rmRecv(rid,pid){const r=DB.receivables.find(x=>x.id===rid);r.payments=(r.payments||[]).filter(p=>p.id!==pid);save();render();}
+
+/* ---- WHAT'S NEW ---- */
+const CHANGELOG=[
+ {v:'1.6.0',notes:['New “Owed to Me” ledger — track who owes you and record each repayment (partial payments supported).','Goals now suggest where your monthly savings should go — priority drives the split (P1 fills first).','This “What’s New” note pops up whenever the app updates.']},
+ {v:'1.5.0',notes:['Goals: log actual savings with amount + where it’s kept (bank / gold / FD); see saved-to-date and a location breakdown.']},
+ {v:'1.4.0',notes:['Garage redesigned — vehicle switcher, insurance & PUC expiry alerts, and a document glovebox with photo storage.']},
+ {v:'1.3.0',notes:['New motivational Home screen (now the default).','Avalanche vs Snowball explained clearly.','Subscriptions use real monthly/yearly dates.','EMIs show remaining amount per card.']}
+];
+function cmpVer(a,b){const pa=(a||'0').split('.').map(Number),pb=(b||'0').split('.').map(Number);for(let i=0;i<3;i++){if((pa[i]||0)!==(pb[i]||0))return (pa[i]||0)-(pb[i]||0);}return 0;}
+function showWhatsNew(force){
+  const seen=DB.meta&&DB.meta.lastSeenVersion;
+  const items=force?CHANGELOG:CHANGELOG.filter(c=>!seen||cmpVer(c.v,seen)>0);
+  if(!items.length)return;
+  const body=items.map(c=>`<div style="margin-bottom:14px"><div class="lbl">v${c.v}</div><ul style="margin:6px 0 0;padding-left:18px;color:var(--txt2);font-size:13px;line-height:1.7">${c.notes.map(n=>`<li>${n}</li>`).join('')}</ul></div>`).join('');
+  modal('What’s New',body+`<button class="btn gold" style="width:100%;margin-top:8px" onclick="closeModal()">Got it</button>`);
+}
 
 /* ---- CASH-FLOW CALENDAR ---- */
 function vCal(){
@@ -808,28 +1074,79 @@ function saveVac(){DB.vacations.push({id:uid(),name:$('#vn').value||'Trip',pax:+
 function delVac(id){DB.vacations=DB.vacations.filter(v=>v.id!==id);save();render();}
 
 /* ---- GARAGE ---- */
+let GARAGE_SEL=0;
+function daysTo(str){if(!str)return null;const d=new Date(str);if(isNaN(d))return null;d.setHours(0,0,0,0);const n=new Date();n.setHours(0,0,0,0);return Math.round((d-n)/86400000);}
+function pickPhoto(cb){const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const max=1400;let w=img.width,h=img.height;if(w>h&&w>max){h=Math.round(h*max/w);w=max;}else if(h>=w&&h>max){w=Math.round(w*max/h);h=max;}const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);cb(cv.toDataURL('image/jpeg',0.6));};img.src=r.result;};r.readAsDataURL(f);};inp.click();}
 function vGarage(){
   const main=$('#main');
-  main.innerHTML=header('Garage','Car expenses &amp; repair queue',`<span class="chip gold" onclick="addCar()" style="cursor:pointer">+ Add car</span>`);
+  main.innerHTML=header('Garage','Vehicles · documents · repairs',`<span class="chip gold" onclick="addCar()" style="cursor:pointer">+ Add vehicle</span>`);
+  if(!DB.cars.length){const e=el('div','card');e.innerHTML='<div class="empty">No vehicles yet — tap “+ Add vehicle”.</div>';main.appendChild(e);return;}
+  if(GARAGE_SEL>=DB.cars.length)GARAGE_SEL=0;
+  const sw=el('div','vswitch');
+  sw.innerHTML=DB.cars.map((c,i)=>`<button class="${i===GARAGE_SEL?'on':''}" onclick="selectVehicle(${i})">${c.name}</button>`).join('');
+  main.appendChild(sw);
+  const car=DB.cars[GARAGE_SEL];
+  const ins=car.insurance||{},puc=car.puc||{},docs=car.docs||{};
   const order={critical:0,medium:1,low:2};
-  DB.cars.forEach(car=>{
-    const pend=car.repairs.filter(r=>!r.done).sort((a,b)=>order[a.crit]-order[b.crit]);
-    const done=car.repairs.filter(r=>r.done);
-    const c=el('div','card');c.style.marginBottom='16px';
-    c.innerHTML=`<div class="lbl">⛭ ${car.name} <span class="muted">${car.model}</span></div>
-      <div class="kpi sm">${fmt(sumBy(pend,r=>r.cost))} <span class="muted" style="font-size:13px">pending repairs</span></div>
-      <div class="sub">${car.odo.toLocaleString('en-IN')} km · ${pend.length} open · ${done.length} done</div>
-      <div style="margin-top:16px">${pend.map(r=>`<div class="list-row"><span><span class="pill ${r.crit==='critical'?'crit':r.crit==='medium'?'warn':'ok'}">${r.crit}</span> ${r.title}</span><span class="num">${fmt(r.cost)} <button class="btn sm" onclick="doneRepair('${car.id}','${r.id}')">✓</button></span></div>`).join('')||'<div class="empty">No open repairs 🎉</div>'}</div>
-      ${done.length?`<div class="muted" style="font-size:12px;margin-top:12px">Done: ${done.map(d=>d.title).join(', ')}</div>`:''}
-      <div style="margin-top:12px"><button class="btn sm" onclick="addRepair('${car.id}')">+ Repair</button></div>`;
-    main.appendChild(c);
-  });
+  const pend=(car.repairs||[]).filter(r=>!r.done).sort((a,b)=>order[a.crit]-order[b.crit]);
+  const done=(car.repairs||[]).filter(r=>r.done);
+  const hero=el('div','vhero');
+  hero.innerHTML=`${car.photo?`<img class="bg" src="${car.photo}">`:''}
+    <div class="meta">
+      <div style="font-family:var(--serif);font-size:24px;font-weight:600">${car.name}</div>
+      <div class="muted" style="font-size:12.5px;margin:2px 0 8px">${car.model||''}${car.odo?' · '+car.odo.toLocaleString('en-IN')+' km':''}</div>
+      ${car.reg?`<span class="regbadge">${car.reg}</span>`:''}
+    </div>`;
+  main.appendChild(hero);
+  const banner=(label,exp)=>{const dd=daysTo(exp);if(dd==null)return '';const col=dd<0?'background:rgba(217,139,134,.18);color:var(--red)':dd<=30?'background:rgba(217,180,106,.16);color:var(--amber)':'background:rgba(121,179,148,.16);color:var(--green)';const txt=dd<0?`${label} expired ${-dd}d ago`:dd===0?`${label} expires today`:`${label} expires in ${dd}d`;return `<div class="expbanner" style="${col}">⚠ ${txt}</div>`;};
+  const bnHtml=banner('Insurance',ins.expiry)+banner('PUC',puc.expiry);
+  if(bnHtml){const bn=el('div');bn.innerHTML=bnHtml;main.appendChild(bn);}
+  const insLeft=ins.expiry?(daysTo(ins.expiry)<0?'expired':daysTo(ins.expiry)+'d'):'—';
+  const pucLeft=puc.expiry?(daysTo(puc.expiry)<0?'expired':daysTo(puc.expiry)+'d'):'—';
+  const info=el('div','grid g3');
+  info.innerHTML=
+    `<div class="card"><div class="lbl">Insurance</div><div class="kpi sm">${insLeft}</div><div class="sub">${ins.provider||'add details'}${ins.policyNo?' · '+ins.policyNo:''}</div></div>`+
+    `<div class="card"><div class="lbl">PUC</div><div class="kpi sm">${pucLeft}</div><div class="sub">${puc.expiry?'valid till '+new Date(puc.expiry).toLocaleDateString('en-IN'):'add expiry'}</div></div>`+
+    `<div class="card"><div class="lbl">Pending repairs</div><div class="kpi sm val-red">${fmt(sumBy(pend,r=>r.cost))}</div><div class="sub">${pend.length} open · ${done.length} done</div></div>`;
+  main.appendChild(info);
+  const tiles=[['insurance','Insurance'],['puc','PUC certificate'],['rc','RC'],['licence','Driver’s licence']];
+  const gb=el('div','card');gb.style.marginTop='16px';
+  gb.innerHTML=`<div class="sectit" style="margin:0 0 14px">Glovebox <small>TAP TO ADD / VIEW</small></div>
+    <div class="glovebox">${tiles.map(([k,lbl])=>{const d=docs[k]||{};return `<div class="doctile" onclick="viewDoc('${car.id}','${k}')">${d.img?`<img src="${d.img}"><div class="cap">${lbl}</div>`:`<div class="ph">⤒<br>${lbl}</div>`}</div>`;}).join('')}</div>
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="editVehicle('${car.id}')">Edit vehicle &amp; expiry</button><button class="btn sm" onclick="setVehiclePhoto('${car.id}')">${car.photo?'Change':'Add'} photo</button></div>`;
+  main.appendChild(gb);
+  const rp=el('div','card');rp.style.marginTop='16px';
+  rp.innerHTML=`<div class="sectit" style="margin:0 0 14px">Repair Queue <small>BY CRITICALITY</small></div>
+    ${pend.map(r=>`<div class="list-row"><span><span class="pill ${r.crit==='critical'?'crit':r.crit==='medium'?'warn':'ok'}">${r.crit}</span> ${r.title}</span><span class="num">${fmt(r.cost)} <button class="btn sm" onclick="doneRepair('${car.id}','${r.id}')">✓</button></span></div>`).join('')||'<div class="empty">No open repairs 🎉</div>'}
+    ${done.length?`<div class="muted" style="font-size:12px;margin-top:12px">Done: ${done.map(d=>d.title).join(', ')}</div>`:''}
+    <div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm" onclick="addRepair('${car.id}')">+ Repair</button><button class="btn sm danger" onclick="delCar('${car.id}')">Delete vehicle</button></div>`;
+  main.appendChild(rp);
 }
+function selectVehicle(i){GARAGE_SEL=i;render();}
+function setVehiclePhoto(carId){pickPhoto(d=>{const c=DB.cars.find(x=>x.id===carId);const prev=c.photo;c.photo=d;if(save()){render();toast("Photo saved");}else{c.photo=prev;toast("Couldn't save — device storage is full");}});}
+function viewDoc(carId,key){const c=DB.cars.find(x=>x.id===carId);const d=(c.docs||{})[key]||{};const L={insurance:'Insurance',puc:'PUC certificate',rc:'RC',licence:'Driver’s licence'};
+  if(!d.img){addDoc(carId,key);return;}
+  modal(L[key]||'Document',`<img src="${d.img}" style="width:100%;border-radius:12px;display:block"><button class="btn danger" style="width:100%;margin-top:12px" onclick="rmDoc('${carId}','${key}')">Remove photo</button>`);}
+function addDoc(carId,key){pickPhoto(d=>{const c=DB.cars.find(x=>x.id===carId);c.docs=c.docs||{};c.docs[key]=c.docs[key]||{};const prev=c.docs[key].img;c.docs[key].img=d;if(save()){render();toast("Document saved");}else{c.docs[key].img=prev;toast("Couldn't save — device storage is full");}});}
+function rmDoc(carId,key){const c=DB.cars.find(x=>x.id===carId);if(c.docs&&c.docs[key]){delete c.docs[key].img;save();}closeModal();render();}
+function delCar(id){DB.cars=DB.cars.filter(c=>c.id!==id);GARAGE_SEL=0;save();render();}
 function doneRepair(carId,rId){const c=DB.cars.find(x=>x.id===carId);const r=c.repairs.find(x=>x.id===rId);r.done=true;save();render();}
-function addCar(){modal('Add car',`<div class="field"><label>Name</label><input id="kn"></div>
-  <div class="row"><div class="field"><label>Model / year</label><input id="km"></div><div class="field"><label>Odometer km</label><input id="ko" type="number"></div></div>
+function editVehicle(id){const c=DB.cars.find(x=>x.id===id);const ins=c.insurance||{},puc=c.puc||{};
+  modal('Edit vehicle',`
+   <div class="field"><label>Name</label><input id="kn" value="${c.name||''}"></div>
+   <div class="row"><div class="field"><label>Model / year</label><input id="km" value="${c.model||''}"></div><div class="field"><label>Odometer km</label><input id="ko" type="number" value="${c.odo||0}"></div></div>
+   <div class="field"><label>Reg number</label><input id="kreg" value="${c.reg||''}" placeholder="KL14W1410"></div>
+   <div class="sectit" style="font-size:15px;margin:14px 0 8px">Insurance</div>
+   <div class="row"><div class="field"><label>Provider</label><input id="kip" value="${ins.provider||''}"></div><div class="field"><label>Policy no.</label><input id="kin" value="${ins.policyNo||''}"></div></div>
+   <div class="field"><label>Insurance expiry</label><input id="kie" type="date" value="${ins.expiry||''}"></div>
+   <div class="field"><label>PUC expiry</label><input id="kpe" type="date" value="${puc.expiry||''}"></div>
+   <button class="btn gold" style="width:100%" onclick="updVehicle('${id}')">Save</button>`);}
+function updVehicle(id){const c=DB.cars.find(x=>x.id===id);c.name=$('#kn').value||c.name;c.model=$('#km').value;c.odo=+$('#ko').value||0;c.reg=$('#kreg').value;c.insurance=Object.assign({},c.insurance,{provider:$('#kip').value,policyNo:$('#kin').value,expiry:$('#kie').value});c.puc=Object.assign({},c.puc,{expiry:$('#kpe').value});save();closeModal();render();}
+function addCar(){modal('Add vehicle',`<div class="field"><label>Name</label><input id="kn" placeholder="Mercedes A180 CDI"></div>
+  <div class="row"><div class="field"><label>Model / year</label><input id="km" placeholder="W176 · 2013"></div><div class="field"><label>Odometer km</label><input id="ko" type="number"></div></div>
+  <div class="field"><label>Reg number</label><input id="kreg" placeholder="KL14W1410"></div>
   <button class="btn gold" style="width:100%" onclick="saveCar()">Save</button>`);}
-function saveCar(){DB.cars.push({id:uid(),name:$('#kn').value||'Car',model:$('#km').value||'',odo:+$('#ko').value||0,repairs:[]});save();closeModal();render();}
+function saveCar(){DB.cars.push({id:uid(),name:$('#kn').value||'Vehicle',model:$('#km').value||'',odo:+$('#ko').value||0,reg:$('#kreg').value||'',repairs:[],docs:{},insurance:{},puc:{}});GARAGE_SEL=DB.cars.length-1;save();closeModal();render();}
 function addRepair(carId){modal('Add repair',`<div class="field"><label>Title</label><input id="rt"></div>
   <div class="row"><div class="field"><label>Cost ₹</label><input id="rc" type="number"></div>
   <div class="field"><label>Criticality</label><select id="rk"><option value="critical">Critical</option><option value="medium">Medium</option><option value="low">Low</option></select></div></div>
@@ -1012,7 +1329,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.0.2';
+const APP_VERSION='1.6.0';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
@@ -1029,9 +1346,11 @@ const APP_VERSION='1.0.2';
 document.addEventListener('contextmenu',function(e){if(!e.target.closest('input,textarea'))e.preventDefault();});
 
 /* boot */
-document.body.dataset.view='overview';
+document.body.dataset.view='home';
 var _v=document.getElementById('verLbl');if(_v)_v.textContent='v'+APP_VERSION;
 render();
+if(DB.meta.lastSeenVersion==null){DB.meta.lastSeenVersion=APP_VERSION;save();}
+else if(cmpVer(APP_VERSION,DB.meta.lastSeenVersion)>0){DB.meta.lastSeenVersion=APP_VERSION;save();setTimeout(()=>showWhatsNew(false),500);}
 </script>
 </body>
 </html>
