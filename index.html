@@ -191,6 +191,26 @@ section.on{display:block}
   .card{padding:14px}
   .btn.sm{padding:6px 9px;font-size:11px}
 }
+/* Debt cards (mobile) */
+.debtcards{display:none}
+.debtcard{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;background:linear-gradient(160deg,var(--card2),var(--bg2))}
+.debtcard .dc-top{display:flex;align-items:flex-start;gap:11px}
+.dc-rank{width:26px;height:26px;flex:none;border-radius:50%;background:var(--gold-dim);color:var(--gold2);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.dc-name{flex:1;min-width:0}
+.dc-title{font-weight:600;font-size:15px;line-height:1.25}
+.dc-lender{font-size:11px;margin-top:2px;color:var(--muted)}
+.dc-bal{font-size:17px;font-weight:700;white-space:nowrap}
+.dc-meta{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:11px}
+.dc-rate{font-size:13px;font-weight:600;font-family:var(--mono);color:var(--txt2)}
+.dc-rate.hi{color:var(--red)}
+.dc-last{font-size:11px;color:var(--muted);margin-left:auto}
+.dc-actions{display:flex;gap:8px;margin-top:13px}
+.dc-actions .btn{flex:1;justify-content:center}
+.dc-actions .btn.icon{flex:0 0 auto}
+@media(max-width:640px){
+  .debttable{display:none}
+  .debtcards{display:block}
+}
 </style>
 </head>
 <body>
@@ -212,9 +232,7 @@ section.on{display:block}
       <a data-v="overview"><span class="ic">◆</span> Overview</a>
       <a data-v="advisor"><span class="ic">✦</span> AI Advisor</a>
       <div class="sep">Debt</div>
-      <a data-v="debts"><span class="ic">⚖</span> Debts &amp; Loans</a>
-      <a data-v="owed"><span class="ic">⇄</span> Owed to Me</a>
-      <a data-v="statements"><span class="ic">≡</span> Statements</a>
+      <a data-v="debts"><span class="ic">⚖</span> Debts &amp; Dues</a>
       <a data-v="repay"><span class="ic">↻</span> Repayment Plan</a>
       <a data-v="cards"><span class="ic">▭</span> Cards &amp; EMIs</a>
       <a data-v="subs"><span class="ic">∞</span> Subscriptions</a>
@@ -307,14 +325,49 @@ if(!DB.gold)DB.gold=[];
 if(!DB.chits)DB.chits=[];
 if(!DB.renewals)DB.renewals=[];
 if(!DB.meta)DB.meta={lastSeenVersion:'1.5.0'};
+// ---- INDIVIDUALS LEDGER: migrate F&F loans + receivables into a single per-person history ----
+if(!DB.people){
+  DB.people=[];
+  const _ds=()=>new Date().toISOString().slice(0,10);
+  const _norm=s=>(s||'').trim().toLowerCase();
+  const _find=(name,rel)=>{const k=_norm(name);let p=DB.people.find(x=>_norm(x.name)===k);if(!p){p={id:uid(),name:(name||'Someone').trim(),relation:rel||'Friend',entries:[]};DB.people.push(p);}return p;};
+  // loans taken from friends/family → "in" (money I received) + their repayments I made → "out"
+  (DB.loans||[]).filter(l=>l.relationship).forEach(l=>{
+    const party=(l.lender&&!/^(friend|family|freind|famil)/i.test(l.lender))?l.lender:l.name;
+    const rel=/famil/i.test(l.lender||'')?'Family':'Friend';
+    const p=_find(party,rel);
+    const orig=(l.original!=null?l.original:l.balance)||0;
+    if(orig>0)p.entries.push({id:uid(),dir:'in',amount:orig,date:l.start||_ds(),mode:'—',note:'Borrowed'});
+    (l.payments||[]).forEach(pay=>p.entries.push({id:uid(),dir:'out',amount:pay.amount,date:pay.date||_ds(),mode:'—',note:'I repaid'}));
+  });
+  // money I lent out → "out" + their repayments → "in"
+  (DB.receivables||[]).forEach(r=>{
+    const p=_find(r.person,'Friend');
+    if((r.principal||0)>0)p.entries.push({id:uid(),dir:'out',amount:r.principal||0,date:r.date||_ds(),mode:'—',note:r.note||'I lent'});
+    (r.payments||[]).forEach(pay=>p.entries.push({id:uid(),dir:'in',amount:pay.amount,date:pay.date||_ds(),mode:'—',note:'They repaid'}));
+  });
+  // banks-only stay in DB.loans; individuals now live in DB.people
+  DB.loans=(DB.loans||[]).filter(l=>!l.relationship);
+  DB.receivables=[];
+  save();
+}
+if(!DB.people)DB.people=[];
 function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(DB));return true;}catch(e){return false;}}
 function uid(){return 'x'+Math.random().toString(36).slice(2,9);}
+/* ---- INDIVIDUALS LEDGER helpers ---- */
+function pNet(p){return (p.entries||[]).reduce((s,e)=>s+(e.dir==='out'?e.amount:-e.amount),0);} // >0 they owe me · <0 I owe them
+function pIOwe(p){return Math.max(0,-pNet(p));}
+function pOwesMe(p){return Math.max(0,pNet(p));}
+function peopleIOwe(){return sumBy(DB.people||[],pIOwe);}
+function peopleOwed(){return sumBy(DB.people||[],pOwesMe);}
 
 /* ---------- DERIVED METRICS ---------- */
 function metrics(){
   const loanTotal=sumBy(DB.loans,l=>l.balance);
   const cardTotal=sumBy(DB.cards,c=>c.balance);
-  const liabilities=loanTotal+cardTotal;
+  const ff=peopleIOwe();          // what I owe individuals (net)
+  const peopleOwe=peopleOwed();   // what individuals owe me (net)
+  const liabilities=loanTotal+cardTotal+ff;
   const emiOut=sumBy(DB.emis,e=>e.amount);
   const subOut=sumBy(DB.subs,s=>s.amount);
   const chitOut=sumBy((DB.chits||[]).filter(c=>!chitDone(c)),c=>c.monthly);
@@ -324,7 +377,7 @@ function metrics(){
   const repay=DB.plan.extraRepayment;
   const surplus=income-outflow-goals-repay;
   const assets=sumBy(DB.assets,a=>a.value);
-  const networth=assets-liabilities;
+  const networth=assets+peopleOwe-liabilities;
   const cardLimit=sumBy(DB.cards,c=>c.limit);
   const util=cardLimit?Math.round(cardTotal/cardLimit*100):0;
   // business vs personal
@@ -337,11 +390,10 @@ function metrics(){
   let bal=loanTotal, mo=0, rAvg=DB.loans.length?sumBy(DB.loans,l=>l.rate*l.balance)/(loanTotal||1):0;
   while(bal>0 && mo<600){bal=bal*(1+rAvg/100/12)-repay;mo++;}
   const dfree=new Date();dfree.setMonth(dfree.getMonth()+mo);
-  const ff=sumBy(DB.loans.filter(l=>l.relationship),l=>l.balance);
   const ymNow=new Date().toISOString().slice(0,7);
   const expMonth=sumBy((DB.expenses||[]).filter(e=>(e.date||'').slice(0,7)===ymNow),e=>e.amount);
   return {loanTotal,cardTotal,liabilities,emiOut,subOut,outflow,income,goals,repay,surplus,assets,networth,cardLimit,util,expMonth,
-    biz:{liab:bizLoan+bizCard,out:bizOut},per:{liab:perLoan+perCard,out:perOut},dfreeMonths:mo,dfree,ff,rAvg};
+    biz:{liab:bizLoan+bizCard,out:bizOut},per:{liab:perLoan+perCard,out:perOut},dfreeMonths:mo,dfree,ff,peopleOwe,rAvg};
 }
 
 /* ---------- HEALTH SCORE (lands ~75 on seed) ---------- */
@@ -459,7 +511,7 @@ const M=()=>metrics();
 function render(){
   const view=document.body.dataset.view||'overview';
   $('#main').innerHTML='';
-  ({home:vHome,overview:vOverview,advisor:vAdvisor,debts:vDebts,owed:vOwed,statements:vStatements,statement:vStatement,repay:vRepay,cards:vCards,subs:vSubs,
+  ({home:vHome,overview:vOverview,advisor:vAdvisor,debts:vDebts,owed:vDebts,statements:vDebts,statement:vDebts,person:vPerson,repay:vRepay,cards:vCards,subs:vSubs,
     networth:vNet,safety:vSafety,gold:vGold,chits:vChits,bizrep:vBizRep,compliance:vComp,zakat:vZakat,renewals:vRenew,goals:vGoals,calendar:vCal,vacation:vVac,garage:vGarage,lifestyle:vLife,
     cardvault:vCardVault,loginvault:vLoginVault}[view]||vHome)();
   // keep wide tables contained (horizontal scroll within their card, never the page)
@@ -536,7 +588,7 @@ function vOverview(){
   main.innerHTML=header('Overview','Your complete financial picture at a glance',
     `<span class="chip gold" onclick="editIncome()" style="cursor:pointer">⚙ Income &amp; Budget</span>`)+
   `<div class="grid g4">
-    ${kpi('Total Liabilities',fmtL(m.liabilities),`Loans ${fmtL(m.loanTotal)} + Cards ${fmtL(m.cardTotal)}`,'val-red')}
+    ${kpi('Total Liabilities',fmtL(m.liabilities),`Banks ${fmtL(m.loanTotal)} · People ${fmtL(m.ff)} · Cards ${fmtL(m.cardTotal)}`,'val-red')}
     ${kpi('Monthly Outflow',fmt(m.outflow),`EMIs ${fmt(m.emiOut)} + Subs ${fmt(m.subOut)}`,'val-gold')}
     ${kpi('Debt-Free Date',m.dfree.toLocaleDateString('en-IN',{month:'short',year:'numeric'}),`${m.dfreeMonths} mo at ${fmt(m.repay)}/mo`,'val-green')}
     ${kpi('Credit Utilisation',m.util+'%',m.util>30?'above safe 30% line':'within safe range',m.util>30?'val-red':'val-green')}
@@ -573,12 +625,14 @@ function vOverview(){
 
   // liability donut
   const lb=el('div','card');lb.style.marginTop='16px';
-  const lp=m.liabilities?Math.round(m.loanTotal/m.liabilities*100):0, cp=m.liabilities?100-lp:0;
+  const tl=m.liabilities||1;
+  const lp=Math.round(m.loanTotal/tl*100), pp=Math.round(m.ff/tl*100), cp=Math.max(0,100-lp-pp);
   lb.innerHTML=`<div class="sectit" style="margin:0 0 18px">Liability Breakdown</div>
     <div class="grid g2" style="align-items:center">
-      ${donut([{v:m.loanTotal,c:'#c9a86a'},{v:m.cardTotal,c:'#7aa7e0'}],fmtL(m.liabilities),'TOTAL')}
+      ${donut([{v:m.loanTotal,c:'#c9a86a'},{v:m.ff,c:'#d9b46a'},{v:m.cardTotal,c:'#7aa7e0'}],fmtL(m.liabilities),'TOTAL')}
       <div>
-        <div class="list-row"><span><span class="dot" style="background:#c9a86a"></span> Loans</span><span class="num">${fmtL(m.loanTotal)} <span class="muted">(${lp}%)</span></span></div>
+        <div class="list-row"><span><span class="dot" style="background:#c9a86a"></span> Bank loans</span><span class="num">${fmtL(m.loanTotal)} <span class="muted">(${lp}%)</span></span></div>
+        <div class="list-row"><span><span class="dot" style="background:#d9b46a"></span> People (F&amp;F)</span><span class="num">${fmtL(m.ff)} <span class="muted">(${pp}%)</span></span></div>
         <div class="list-row"><span><span class="dot" style="background:#7aa7e0"></span> Card balances</span><span class="num">${fmtL(m.cardTotal)} <span class="muted">(${cp}%)</span></span></div>
       </div>
     </div>`;
@@ -673,40 +727,140 @@ function buildInsights(m,h){
   if(m.util>30)out.push({t:'High credit utilisation hurting your score',b:`You're using ${m.util}% of your total credit limit. Bringing it under 30% (pay down ~${fmt(overUtil)}) protects your CIBIL score and lowers interest exposure.`});
   const cost=[...DB.loans].filter(l=>l.rate>0).sort((a,b)=>b.rate-a.rate)[0];
   if(cost)out.push({t:`Attack "${cost.name}" first — it's your costliest debt`,b:`At ${cost.rate}% interest, every month you delay costs ~${fmt(Math.round(cost.balance*cost.rate/100/12))}. Prioritise this over 0% friend/family loans mathematically (but mind relationships).`});
-  if(m.ff>0)out.push({t:'Protect relationships with steady repayments',b:`You owe ${fmt(m.ff)} to friends &amp; family. Even small, consistent monthly transfers preserve trust far better than one large delayed payment. The planner rotates these fairly for you.`});
+  if(m.ff>0)out.push({t:'Keep individual balances visible',b:`You owe ${fmt(m.ff)} across friends &amp; family. Open each person under Debts &amp; Dues to see the running history — small, steady, dated repayments preserve trust better than one large delayed transfer.`});
   const ef=DB.goals.find(g=>/emergency/i.test(g.name));
   if(ef&&ef.saved<m.outflow*3)out.push({t:'Build the buffer before the dream',b:`Your emergency fund matters more than the rental land right now — debt + no buffer is fragile. Fully fund 3–6 months of outflow (${fmt(m.outflow*6)}) first, then accelerate the investment goal.`});
   if(m.surplus<0)out.push({t:'You are running a monthly deficit',b:`Outflow + goals + repayment exceed income by ${fmt(-m.surplus)}. Trim subscriptions or lower the goal contribution until it turns positive.`});
   return out;
 }
 
-/* ---- DEBTS ---- */
+/* ---- DEBTS & DUES (banks + individuals) ---- */
 function vDebts(){
   const m=M();const main=$('#main');
-  main.innerHTML=header('Debts &amp; Loans','Fairness + interest-aware repayment',`<span class="chip gold" onclick="addLoan()" style="cursor:pointer">+ Add loan</span>`);
+  main.innerHTML=header('Debts &amp; Dues','Bank loans &amp; people you borrow / lend with',`<span class="chip" onclick="addLoan()" style="cursor:pointer">+ Bank loan</span> <span class="chip gold" onclick="addPerson()" style="cursor:pointer">+ Person</span>`);
+
+  // KPI summary
+  const tot=el('div','grid g3');
+  tot.innerHTML=kpi('Owe banks',fmtL(m.loanTotal),`${DB.loans.length} loan${DB.loans.length===1?'':'s'}`,'val-red')+
+    kpi('Owe people',fmtL(m.ff),'friends &amp; family','val-amber')+
+    kpi('People owe me',fmtL(m.peopleOwe),'lent out','val-green');
+  main.appendChild(tot);
+
+  /* ===== SECTION 1 — BANKS ===== */
   const order=repaymentOrder(DB.plan.method);
-  const card=el('div','card');
-  card.innerHTML=`<div class="sectit" style="margin:0 0 14px">Suggested Repayment Order <small>${DB.plan.method.toUpperCase()} · RELATIONSHIPS ROTATED</small></div>
-   <table><thead><tr><th>#</th><th>Debt</th><th>Type</th><th>Rate</th><th>Balance</th><th>Last paid</th><th></th></tr></thead><tbody>
+  const banks=el('div','card');banks.style.marginTop='16px';
+  banks.innerHTML=`<div class="sectit" style="margin:0 0 4px">Loans from Banks</div>
+   <div class="muted" style="font-size:12px;margin-bottom:14px">Interest-bearing loans, ordered ${DB.plan.method.toUpperCase()} (costliest first).</div>`+
+   (order.length?`<div class="debttable"><table><thead><tr><th>#</th><th>Loan</th><th>Type</th><th>Rate</th><th>Balance</th><th>Last paid</th><th></th></tr></thead><tbody>
    ${order.map((l,i)=>`<tr>
       <td class="num muted">${i+1}</td>
-      <td>${l.name}<div class="muted" style="font-size:11px">${l.lender}</div></td>
-      <td><span class="pill ${l.scope==='business'?'biz':'per'}">${l.scope}</span>${l.relationship?' <span class="pill warn">F&amp;F</span>':''}</td>
+      <td>${l.name}<div class="muted" style="font-size:11px">${l.lender||''}</div></td>
+      <td><span class="pill ${l.scope==='business'?'biz':'per'}">${l.scope}</span></td>
       <td class="num ${l.rate>=12?'val-red':''}">${l.rate}%</td>
       <td class="num">${fmt(l.balance)}</td>
       <td class="muted" style="font-size:12px">${l.lastPaid?new Date(l.lastPaid).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—'}</td>
-      <td style="text-align:right"><button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button> <button class="btn sm" onclick="stmtFromLoan('${l.id}')">Statement</button> <button class="btn sm danger" onclick="delLoan('${l.id}')">✕</button></td>
+      <td style="text-align:right"><button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button> <button class="btn sm danger" onclick="delLoan('${l.id}')">✕</button></td>
    </tr>`).join('')}
-   </tbody></table>
-   <div class="muted" style="font-size:12px;margin-top:12px">Tap <b>Record payment</b> on any debt to enter what you paid — it's subtracted from that balance. For friends &amp; family, paying also moves them to the back of the queue so everyone gets paid in turn.</div>`;
-  main.appendChild(card);
+   </tbody></table></div>
+   <div class="debtcards">
+   ${order.map((l,i)=>`<div class="debtcard">
+      <div class="dc-top">
+        <div class="dc-rank">${i+1}</div>
+        <div class="dc-name"><div class="dc-title">${l.name}</div><div class="dc-lender">${l.lender||''}</div></div>
+        <div class="dc-bal num">${fmt(l.balance)}</div>
+      </div>
+      <div class="dc-meta">
+        <span class="pill ${l.scope==='business'?'biz':'per'}">${l.scope}</span>
+        <span class="dc-rate ${l.rate>=12?'hi':''}">${l.rate}%</span>
+        <span class="dc-last">${l.lastPaid?'Paid '+new Date(l.lastPaid).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'Not paid yet'}</span>
+      </div>
+      <div class="dc-actions">
+        <button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button>
+        <button class="btn sm danger icon" onclick="delLoan('${l.id}')">✕</button>
+      </div>
+   </div>`).join('')}
+   </div>`
+   :`<div class="empty">No bank loans yet — tap “+ Bank loan”.</div>`);
+  main.appendChild(banks);
 
-  const tot=el('div','grid g3');tot.style.marginTop='16px';
-  tot.innerHTML=kpi('Total Loans',fmtL(m.loanTotal),`${DB.loans.length} active`,'val-red')+
-    kpi('Friends &amp; Family',fmt(m.ff),'0% · relationships','val-blue')+
-    kpi('Avg Interest',m.rAvg.toFixed(1)+'%','weighted by balance','val-gold');
-  main.appendChild(tot);
+  /* ===== SECTION 2 — INDIVIDUALS ===== */
+  const ppl=[...(DB.people||[])].sort((a,b)=>Math.abs(pNet(b))-Math.abs(pNet(a)));
+  const ind=el('div','card');ind.style.marginTop='16px';
+  ind.innerHTML=`<div class="sectit" style="margin:0 0 4px">Individuals</div>
+   <div class="muted" style="font-size:12px;margin-bottom:14px">One running history per person — money you borrowed and lent, with dates &amp; payment mode. Tap to open.</div>`+
+   (ppl.length?ppl.map(p=>{const net=pNet(p);const status=net===0?'settled':net>0?'owes you '+fmt(Math.abs(net)):'you owe '+fmt(Math.abs(net));
+     return `<div class="list-row" style="cursor:pointer" onclick="openPerson('${p.id}')">
+        <div><div>${p.name} <span class="pill ${/famil/i.test(p.relation)?'per':'warn'}" style="margin-left:4px">${p.relation||'Friend'}</span></div>
+        <div class="muted" style="font-size:11.5px">${(p.entries||[]).length} entr${(p.entries||[]).length===1?'y':'ies'} · ${status}</div></div>
+        <span class="num ${net>0?'val-green':net<0?'val-red':'muted'}">${net===0?'✓':fmt(Math.abs(net))} ›</span>
+      </div>`;}).join('')
+    :`<div class="empty">No individuals yet — tap “+ Person” to start a shared history.</div>`);
+  main.appendChild(ind);
 }
+
+/* ---- PERSON DETAIL (combined borrow/lend ledger) ---- */
+let PERSON_ID='';
+function openPerson(id){PERSON_ID=id;document.body.dataset.view='person';render();window.scrollTo(0,0);}
+function vPerson(){
+  const main=$('#main');const p=(DB.people||[]).find(x=>x.id===PERSON_ID);
+  if(!p){go('debts');return;}
+  const net=pNet(p);
+  const headline=net===0?'All settled':net>0?p.name+' owes you '+fmt(Math.abs(net)):'You owe '+p.name+' '+fmt(Math.abs(net));
+  main.innerHTML=header(p.name,p.relation||'Friend',`<span class="chip" onclick="go('debts')" style="cursor:pointer">‹ Back</span>`);
+  const top=el('div','card');
+  const lent=sumBy((p.entries||[]).filter(e=>e.dir==='out'),e=>e.amount);
+  const got=sumBy((p.entries||[]).filter(e=>e.dir==='in'),e=>e.amount);
+  top.innerHTML=`<div class="lbl">Net balance</div>
+    <div class="kpi sm ${net>0?'val-green':net<0?'val-red':''}">${headline}</div>
+    <div class="sub" style="margin-top:8px">You gave ${fmt(lent)} · you received ${fmt(got)}</div>
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn sm gold" onclick="addEntry('${p.id}','out')">↑ I gave money</button>
+      <button class="btn sm" onclick="addEntry('${p.id}','in')">↓ I got money</button>
+      <button class="btn sm" onclick="editPerson('${p.id}')">Edit</button>
+      <button class="btn sm danger" onclick="delPerson('${p.id}')">Delete</button>
+    </div>`;
+  main.appendChild(top);
+
+  const hist=el('div','card');hist.style.marginTop='16px';
+  const rows=[...(p.entries||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  hist.innerHTML=`<div class="sectit" style="margin:0 0 14px">History</div>`+
+    (rows.length?rows.map(e=>{const out=e.dir==='out';
+      return `<div class="list-row">
+        <div><div>${out?'You gave':'You received'} ${e.note?'<span class="muted">· '+e.note+'</span>':''}</div>
+        <div class="muted" style="font-size:11px">${e.date?new Date(e.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}):''}${e.mode&&e.mode!=='—'?' · '+e.mode:''}</div></div>
+        <span class="num ${out?'val-green':'val-red'}">${out?'+':'−'}${fmt(e.amount)} <button class="btn sm danger" onclick="delEntry('${p.id}','${e.id}')">✕</button></span>
+      </div>`;}).join('')
+     :'<div class="empty">No transactions yet. Use the buttons above to log money you gave or received.</div>');
+  main.appendChild(hist);
+
+  const note=el('div','card');note.style.marginTop='16px';
+  note.innerHTML=`<div class="muted" style="font-size:12px"><b>Green (+)</b> = money you gave ${p.name} (raises what they owe you, or clears what you owed). <b>Red (−)</b> = money you got from ${p.name} (raises what you owe, or clears what they owed). The net at top is the single number that matters.</div>`;
+  main.appendChild(note);
+}
+const PAY_MODES=['Cash','Bank','UPI','Cheque','Gold','Other'];
+function addPerson(){modal('Add person',`
+  <div class="field"><label>Name</label><input id="pn" placeholder="e.g. Sameer"></div>
+  <div class="field"><label>Relationship</label><select id="pr"><option>Friend</option><option>Family</option><option>Other</option></select></div>
+  <button class="btn gold" style="width:100%" onclick="savePerson()">Add</button>`);}
+function savePerson(){const n=($('#pn').value||'').trim();if(!n){toast('Enter a name');return;}const p={id:uid(),name:n,relation:$('#pr').value||'Friend',entries:[]};DB.people.push(p);save();closeModal();openPerson(p.id);}
+function editPerson(id){const p=DB.people.find(x=>x.id===id);if(!p)return;modal('Edit person',`
+  <div class="field"><label>Name</label><input id="pn" value="${p.name||''}"></div>
+  <div class="field"><label>Relationship</label><select id="pr"><option ${/^friend/i.test(p.relation)?'selected':''}>Friend</option><option ${/famil/i.test(p.relation)?'selected':''}>Family</option><option ${/other/i.test(p.relation)?'selected':''}>Other</option></select></div>
+  <button class="btn gold" style="width:100%" onclick="updPerson('${id}')">Save</button>`);}
+function updPerson(id){const p=DB.people.find(x=>x.id===id);if(!p)return;p.name=($('#pn').value||p.name).trim();p.relation=$('#pr').value||p.relation;save();closeModal();render();}
+function delPerson(id){const p=DB.people.find(x=>x.id===id);if(!p)return;if(!confirm('Delete '+p.name+' and their whole history?'))return;DB.people=DB.people.filter(x=>x.id!==id);save();go('debts');}
+function addEntry(id,dir){const p=DB.people.find(x=>x.id===id);if(!p)return;
+  modal(dir==='out'?'I gave money to '+p.name:'I got money from '+p.name,`
+   <p class="muted" style="font-size:12.5px;margin-bottom:12px">${dir==='out'?'Money leaving you — a loan you give them, or repaying what you owed them.':'Money coming to you — borrowing from them, or them repaying what they owed you.'}</p>
+   <div class="field"><label>Amount ₹</label><input id="enam" type="number" inputmode="numeric" placeholder="e.g. 5000"></div>
+   <div class="field"><label>Date</label><input id="endt" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+   <div class="field"><label>Mode of payment</label><select id="enmd">${PAY_MODES.map(x=>`<option>${x}</option>`).join('')}</select></div>
+   <div class="field"><label>Note (optional)</label><input id="ennt" placeholder="what it was for"></div>
+   <button class="btn gold" style="width:100%" onclick="saveEntry('${id}','${dir}')">Save</button>`);}
+function saveEntry(id,dir){const p=DB.people.find(x=>x.id===id);if(!p)return;const amt=+$('#enam').value||0;if(amt<=0){toast('Enter an amount');return;}
+  p.entries=p.entries||[];p.entries.push({id:uid(),dir,amount:amt,date:$('#endt').value||new Date().toISOString().slice(0,10),mode:$('#enmd').value||'—',note:($('#ennt').value||'').trim()});
+  save();closeModal();render();toast((dir==='out'?'Gave ':'Got ')+fmt(amt));}
+function delEntry(pid,eid){const p=DB.people.find(x=>x.id===pid);if(!p)return;p.entries=(p.entries||[]).filter(e=>e.id!==eid);save();render();}
 function payLoan(id){
   const l=DB.loans.find(x=>x.id===id);if(!l)return;
   modal('Record payment',`
@@ -727,18 +881,18 @@ function confirmPay(id){
 }
 function delLoan(id){DB.loans=DB.loans.filter(l=>l.id!==id);save();render();}
 function addLoan(){
-  modal('Add loan',`
-    <div class="field"><label>Name</label><input id="ln"></div>
-    <div class="field"><label>Lender</label><input id="ll" placeholder="Bank / Friend / Family"></div>
+  modal('Add bank loan',`
+    <div class="field"><label>Loan name</label><input id="ln" placeholder="e.g. Gold loan"></div>
+    <div class="field"><label>Bank / lender</label><input id="ll" placeholder="e.g. UCO Bank"></div>
     <div class="row"><div class="field"><label>Balance ₹</label><input id="lb" type="number"></div>
     <div class="field"><label>Rate %</label><input id="lr" type="number" value="0"></div></div>
-    <div class="row"><div class="field"><label>Scope</label><select id="ls"><option value="business">Business</option><option value="personal">Personal</option></select></div>
-    <div class="field"><label>Friends &amp; family?</label><select id="lf"><option value="no">No</option><option value="yes">Yes</option></select></div></div>
+    <div class="field"><label>Scope</label><select id="ls"><option value="business">Business</option><option value="personal">Personal</option></select></div>
+    <p class="muted" style="font-size:11.5px;margin:4px 0 12px">For money borrowed from or lent to a person, close this and use “+ Person” instead.</p>
     <button class="btn gold" style="width:100%" onclick="saveLoan()">Save</button>`);
 }
 function saveLoan(){
-  const rel=$('#lf').value==='yes';const bal=+$('#lb').value||0;
-  DB.loans.push({id:uid(),name:$('#ln').value||'Loan',lender:$('#ll').value||'',scope:$('#ls').value,rate:+$('#lr').value||0,balance:bal,original:bal,emi:0,relationship:rel,start:new Date().toISOString().slice(0,10),payments:[],lastPaid:new Date().toISOString().slice(0,10)});
+  const bal=+$('#lb').value||0;
+  DB.loans.push({id:uid(),name:$('#ln').value||'Loan',lender:$('#ll').value||'',scope:$('#ls').value,rate:+$('#lr').value||0,balance:bal,original:bal,emi:0,relationship:false,start:new Date().toISOString().slice(0,10),payments:[],lastPaid:new Date().toISOString().slice(0,10)});
   save();closeModal();render();
 }
 
@@ -938,8 +1092,8 @@ function vNet(){
   const main=$('#main');const m=M();
   main.innerHTML=header('Net Worth','Assets vs liabilities',`<span class="chip gold" onclick="addAsset()" style="cursor:pointer">+ Add asset</span>`);
   const top=el('div','grid g3');
-  top.innerHTML=kpi('Assets',fmtL(m.assets),`${DB.assets.length} holdings`,'val-green')+
-    kpi('Liabilities',fmtL(m.liabilities),'loans + cards','val-red')+
+  top.innerHTML=kpi('Assets',fmtL(m.assets+m.peopleOwe),`holdings + ${fmtL(m.peopleOwe)} owed to you`,'val-green')+
+    kpi('Liabilities',fmtL(m.liabilities),'banks + people + cards','val-red')+
     kpi('Net Worth',fmtL(m.networth),'assets − liabilities','val-gold');
   main.appendChild(top);
   const hist=(DB.nwHistory||[]).slice(-12);
@@ -959,8 +1113,12 @@ function vNet(){
     tc.innerHTML=`<div class="sectit" style="margin:0 0 6px">Net Worth Trend</div><div class="muted" style="font-size:12.5px">A snapshot is saved each month — your trend line appears here from next month onward. First point recorded for ${hist[0]?hist[0].ym:new Date().toISOString().slice(0,7)}.</div>`;
   }
   main.appendChild(tc);
+  const c=el('div','card');c.style.marginTop='16px';
+  const max=Math.max(1,...DB.assets.map(a=>a.value),m.peopleOwe);
   c.innerHTML=`<div class="sectit" style="margin:0 0 14px">Asset Allocation</div>`+
-    DB.assets.sort((a,b)=>b.value-a.value).map(a=>`<div style="margin-bottom:16px"><div class="list-row" style="border:none;padding:0 0 6px"><span>${a.name} <span class="muted">· ${a.type}</span></span><span class="num">${fmtL(a.value)} <button class="btn sm danger" onclick="delAsset('${a.id}')" style="margin-left:8px">✕</button></span></div><div class="bar"><span data-w="${Math.round(a.value/max*100)}%" style="width:0"></span></div></div>`).join('');
+    DB.assets.sort((a,b)=>b.value-a.value).map(a=>`<div style="margin-bottom:16px"><div class="list-row" style="border:none;padding:0 0 6px"><span>${a.name} <span class="muted">· ${a.type}</span></span><span class="num">${fmtL(a.value)} <button class="btn sm danger" onclick="delAsset('${a.id}')" style="margin-left:8px">✕</button></span></div><div class="bar"><span data-w="${Math.round(a.value/max*100)}%" style="width:0"></span></div></div>`).join('')+
+    (m.peopleOwe>0?`<div style="margin-bottom:4px"><div class="list-row" style="border:none;padding:0 0 6px"><span>Owed to you <span class="muted">· individuals</span></span><span class="num">${fmtL(m.peopleOwe)}</span></div><div class="bar green"><span data-w="${Math.round(m.peopleOwe/max*100)}%" style="width:0"></span></div></div>`:'')+
+    (!DB.assets.length&&m.peopleOwe<=0?'<div class="empty">No assets yet — tap “+ Add asset”.</div>':'');
   main.appendChild(c);
 }
 function addAsset(){modal('Add asset',`
@@ -1217,6 +1375,10 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.13.0',notes:['Debts, Loans and “Owed to Me” are now one screen: <b>Debts &amp; Dues</b>, split into two clear sections — <b>Loans from Banks</b> and <b>Individuals</b>.','Each individual now has a single running history. Log money you gave or got, each with a date and payment mode, and the app shows one net balance — whether they owe you or you owe them.','Your old friend/family loans and “owed to me” entries were merged into these per-person histories automatically.']},
+ {v:'1.12.2',notes:['App Lock no longer nags you on every refresh. Once you unlock, you stay unlocked until you actually close the app — reloading the page keeps you in. Fully closing and reopening asks again.']},
+ {v:'1.12.1',notes:['Unlock screen is now fingerprint-first: on open it tries your fingerprint straight away, and the PIN only appears if fingerprint fails or you tap “Use PIN instead”. (Some browsers need one tap on the fingerprint button before they’ll show the prompt — that’s a phone security rule, not a bug.)']},
+ {v:'1.12.0',notes:['Debts now show as clean cards on phones — no more sideways scrolling to reach the buttons (the wide table stays on tablet/desktop).','If fingerprint unlock is on, the app asks for your fingerprint the moment it opens — no extra tap. If it doesn’t work, it drops straight to your PIN.']},
  {v:'1.11.0',notes:['Fingerprint / Face unlock — enable it under App Lock (your PIN stays as backup).','Spending now has a one-tap “Clear all” with confirmation.','Statement import is paused for now while we rethink it — it was misreading PDF files.','Credit-card bars are colour-coded by utilisation: green when low, amber mid, red when high.','Cleaner card layout that fits properly on phone, tablet and desktop.']},
  {v:'1.10.0',notes:['Statements — a combined ledger per person that nets money you borrowed from them against money you lent them (open it from any debt or “Owed to Me” entry).','Chits — track a monthly chit (amount, date, tenure) and mark it claimed when you receive the payout; it shows in Coming Up and your monthly outgo.','Loan payments are now logged with dates, so your statements build a full history going forward.']},
  {v:'1.9.0',notes:['Renewals vault — track insurance, AMCs, domains and warranties with expiry alerts.','Compliance calendar — GST (GSTR-1/3B), advance-tax and ITR due dates with countdowns.','Zakat calculator — 2.5% estimate across cash, gold, receivables and business assets, against nisab.','App Lock — set a PIN to lock the whole app on open (your vaults stay separately encrypted).']},
@@ -1674,7 +1836,7 @@ function vZakat(){
   main.innerHTML=header('Zakat','Annual 2.5% estimate',`<span class="chip gold" onclick="editZakat()" style="cursor:pointer">⚙ Inputs</span>`);
   const rate=p.goldRate||0;
   const goldWorth=rate?sumBy(DB.gold||[],g=>g.grams*rate*((g.purity||24)/24)):0;
-  const recv=sumBy(DB.receivables||[],r=>recvOut(r));
+  const recv=peopleOwed();
   const cash=p.zCash||0, biz=p.zBiz||0, debts=p.zDebts||0;
   const net=Math.max(0, cash+goldWorth+recv+biz-debts);
   const nisab=rate?rate*87.48:0;
@@ -1690,7 +1852,7 @@ function vZakat(){
   bd.innerHTML=`<div class="sectit" style="margin:0 0 8px">What's counted</div>`+
     row('Cash &amp; bank savings',cash,'you enter')+
     row('Gold value',goldWorth,rate?'from your holdings':'set gold rate')+
-    row('Receivables (owed to you)',recv,'from Owed to Me')+
+    row('Receivables (owed to you)',recv,'individuals who owe you')+
     row('Business stock &amp; cash',biz,'you enter')+
     `<div class="list-row"><div>Less: short-term debts</div><span class="num val-red">− ${fmt(Math.round(debts))}</span></div>`+
     `<div class="list-row" style="border-top:1px solid var(--line)"><div><b>Zakatable wealth</b></div><span class="num"><b>${fmt(Math.round(net))}</b></span></div>`;
@@ -1735,26 +1897,62 @@ async function bioUnlock(){
     return true;
   }catch(e){return false;}
 }
-async function tryBio(){const ok=await bioUnlock();if(ok){APP_UNLOCKED=true;const d=$('#applock');if(d)d.remove();}else{const e=$('#pinErr');if(e)e.textContent='Fingerprint failed — use PIN';}}
-let APP_UNLOCKED=false;
+let APP_UNLOCKED=false,bioBusy=false;
 function showAppLock(){
   if($('#applock'))return;
   const d=document.createElement('div');d.id='applock';
   d.style.cssText='position:fixed;inset:0;z-index:100000;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px';
   const bio=DB.meta.bioCredId&&bioSupported();
-  d.innerHTML=`<div class="card" style="max-width:340px;width:100%;text-align:center">
-    <div style="font-size:42px;margin-bottom:10px">⚷</div>
-    <h3 style="font-family:var(--serif);font-size:24px">Atlas locked</h3>
-    <p class="muted" style="margin:6px 0 18px;font-size:13px">${bio?'Use fingerprint, or enter your PIN.':'Enter your PIN to continue.'}</p>
-    ${bio?`<button class="btn gold" style="width:100%;margin-bottom:12px" onclick="tryBio()">☝ Unlock with fingerprint</button>`:''}
-    <input id="pinIn" type="password" inputmode="numeric" placeholder="••••" style="text-align:center;letter-spacing:8px" onkeydown="if(event.key==='Enter')tryPin()">
-    <button class="btn ${bio?'':'gold'}" style="width:100%;margin-top:12px" onclick="tryPin()">Unlock with PIN</button>
-    <p id="pinErr" style="font-size:11.5px;margin-top:12px;color:var(--red);min-height:14px"></p>
-  </div>`;
-  document.body.appendChild(d);
-  if(!bio)setTimeout(()=>{const i=$('#pinIn');if(i)i.focus();},100);
+  if(bio){
+    d.innerHTML=`<div class="card" style="max-width:340px;width:100%;text-align:center">
+      <div id="bioIcon" style="font-size:56px;margin-bottom:4px;cursor:pointer;user-select:none" onclick="tryBio(false)">☝</div>
+      <h3 style="font-family:var(--serif);font-size:24px">Atlas locked</h3>
+      <p id="lockMsg" class="muted" style="margin:6px 0 18px;font-size:13px">Authenticating with fingerprint…</p>
+      <button id="bioBtn" class="btn gold" style="width:100%" onclick="tryBio(false)">☝ Unlock with fingerprint</button>
+      <div id="pinArea" style="display:none;margin-top:14px">
+        <input id="pinIn" type="password" inputmode="numeric" placeholder="••••" style="text-align:center;letter-spacing:8px" onkeydown="if(event.key==='Enter')tryPin()">
+        <button class="btn" style="width:100%;margin-top:12px" onclick="tryPin()">Unlock with PIN</button>
+      </div>
+      <p id="pinSwitch" class="muted" style="font-size:12px;margin-top:16px;cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="showPinArea()">Use PIN instead</p>
+      <p id="pinErr" style="font-size:11.5px;margin-top:8px;color:var(--red);min-height:14px"></p>
+    </div>`;
+    document.body.appendChild(d);
+    setTimeout(()=>tryBio(true),200);
+  }else{
+    d.innerHTML=`<div class="card" style="max-width:340px;width:100%;text-align:center">
+      <div style="font-size:42px;margin-bottom:10px">⚷</div>
+      <h3 style="font-family:var(--serif);font-size:24px">Atlas locked</h3>
+      <p class="muted" style="margin:6px 0 18px;font-size:13px">Enter your PIN to continue.</p>
+      <div id="pinArea">
+        <input id="pinIn" type="password" inputmode="numeric" placeholder="••••" style="text-align:center;letter-spacing:8px" onkeydown="if(event.key==='Enter')tryPin()">
+        <button class="btn gold" style="width:100%;margin-top:12px" onclick="tryPin()">Unlock with PIN</button>
+      </div>
+      <p id="pinErr" style="font-size:11.5px;margin-top:12px;color:var(--red);min-height:14px"></p>
+    </div>`;
+    document.body.appendChild(d);
+    setTimeout(()=>{const i=$('#pinIn');if(i)i.focus();},100);
+  }
 }
-async function tryPin(){const v=$('#pinIn').value||'';const h=await sha256(v);if(h===DB.meta.pinHash){APP_UNLOCKED=true;const d=$('#applock');if(d)d.remove();}else{$('#pinErr').textContent='Wrong PIN';$('#pinIn').value='';}}
+function showPinArea(){
+  const pa=$('#pinArea');if(pa)pa.style.display='block';
+  const sw=$('#pinSwitch');if(sw)sw.style.display='none';
+  const i=$('#pinIn');if(i)i.focus();
+}
+async function tryBio(auto){
+  if(bioBusy)return;bioBusy=true;
+  const msg=$('#lockMsg');if(msg&&!auto)msg.textContent='Authenticating with fingerprint…';
+  let ok=false;
+  try{ok=await bioUnlock();}finally{bioBusy=false;}
+  if(ok){APP_UNLOCKED=true;try{sessionStorage.setItem('atlasUnlocked','1');}catch(e){}const d=$('#applock');if(d)d.remove();return;}
+  // blocked (no gesture yet) or a real failure
+  if(auto){
+    if(msg)msg.textContent='Tap the fingerprint button to unlock.';
+  }else{
+    if(msg)msg.textContent='Fingerprint didn\'t work — try again or use your PIN.';
+    showPinArea();
+  }
+}
+async function tryPin(){const v=$('#pinIn').value||'';const h=await sha256(v);if(h===DB.meta.pinHash){APP_UNLOCKED=true;try{sessionStorage.setItem('atlasUnlocked','1');}catch(e){}const d=$('#applock');if(d)d.remove();}else{$('#pinErr').textContent='Wrong PIN';$('#pinIn').value='';}}
 function appLockSettings(){
   const has=!!(DB.meta&&DB.meta.pinHash);
   const bioOn=!!(DB.meta&&DB.meta.bioCredId);
@@ -1930,7 +2128,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.11.0';
+const APP_VERSION='1.13.0';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
@@ -1952,8 +2150,8 @@ function nudges(){
   const m=metrics();const out=[];
   if(m.income>0&&m.subOut/m.income>0.1)out.push(`Subscriptions are ${Math.round(m.subOut/m.income*100)}% of your income — worth a prune.`);
   if(m.util>50)out.push(`Card utilisation is ${m.util}% — staying under 30% protects your CIBIL score.`);
-  const owed=(DB.receivables||[]).filter(r=>recvOut(r)>0);
-  if(owed.length){const t=owed.sort((a,b)=>recvOut(b)-recvOut(a))[0];out.push(`${t.person} still owes you ${fmt(recvOut(t))}.`);}
+  const owed=(DB.people||[]).filter(p=>pOwesMe(p)>0);
+  if(owed.length){const t=owed.sort((a,b)=>pOwesMe(b)-pOwesMe(a))[0];out.push(`${t.name} still owes you ${fmt(pOwesMe(t))}.`);}
   let last=null;(DB.goals||[]).forEach(g=>(g.contributions||[]).forEach(c=>{if(!last||c.date>last)last=c.date;}));
   if(DB.goals&&DB.goals.length){if(!last)out.push("You haven't logged any savings yet — even a small amount counts.");else{const d=daysTo(last);if(d!=null&&-d>21)out.push(`No savings logged in ${-d} days — keep the streak going.`);}}
   return out;
@@ -1964,7 +2162,7 @@ var _v=document.getElementById('verLbl');if(_v)_v.textContent='v'+APP_VERSION;
 render();
 if(DB.meta.lastSeenVersion==null){DB.meta.lastSeenVersion=APP_VERSION;save();}
 else if(cmpVer(APP_VERSION,DB.meta.lastSeenVersion)>0){DB.meta.lastSeenVersion=APP_VERSION;save();setTimeout(()=>showWhatsNew(false),500);}
-if(DB.meta.pinHash)showAppLock();
+if(DB.meta.pinHash){let u=false;try{u=sessionStorage.getItem('atlasUnlocked')==='1';}catch(e){}if(u)APP_UNLOCKED=true;else showAppLock();}
 </script>
 </body>
 </html>
