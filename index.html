@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#0a0a0b" />
-<title>Atlas — Financial Command Centre</title>
+<title>Atlas — Finance Centre</title>
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="icon-192.png" />
 <link rel="apple-touch-icon" href="icon-180.png" />
@@ -30,7 +30,8 @@
 input,textarea,select{-webkit-user-select:text;user-select:text}
 svg,img{pointer-events:none}
 html,body{height:100%}
-body{
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
+body{touch-action:manipulation;overflow-x:hidden;
   background:var(--bg); color:var(--txt); font-family:var(--sans);
   font-size:15px; line-height:1.5; overflow-x:hidden;
   background-image:radial-gradient(1200px 600px at 80% -10%,rgba(201,168,106,.07),transparent 60%),radial-gradient(900px 500px at -10% 110%,rgba(122,167,224,.05),transparent 55%);
@@ -225,7 +226,7 @@ section.on{display:block}
   <aside class="side" id="side">
     <div class="brand">
       <div class="logo">A</div>
-      <div><b>Atlas</b><small>Command Centre</small></div>
+      <div><b>Atlas</b><small>Finance Centre</small></div>
     </div>
     <nav class="nav" id="nav">
       <a data-v="home" class="on"><span class="ic">✦</span> Home</a>
@@ -259,6 +260,7 @@ section.on{display:block}
       <a id="backupBtn"><span class="ic">⤓</span> Backup / Restore</a>
     </nav>
     <div style="margin-top:auto;padding:16px 12px 2px;color:var(--muted);font-size:10px;letter-spacing:1.5px;cursor:pointer" onclick="showWhatsNew(true)">ATLAS · <span id="verLbl"></span> · what's new</div>
+    <div style="padding:2px 12px 14px;color:var(--muted);font-size:8px;letter-spacing:.4px;opacity:.4">developed by EyeJayYou</div>
   </aside>
 
   <main class="main" id="main"><!-- sections injected --></main>
@@ -995,10 +997,8 @@ function vCards(){
   const e=el('div','card');e.style.marginTop='16px';
   e.innerHTML=`<div class="sectit" style="margin:0 0 14px">Active EMIs <small>${fmt(m.emiOut)}/MO</small></div>
     <div style="margin-bottom:12px"><button class="btn sm gold" onclick="addEMI()">+ Add EMI</button></div>
-    <table><thead><tr><th>EMI</th><th>Card</th><th>Monthly</th><th>Left</th><th>Next due</th><th></th></tr></thead><tbody>
-    ${DB.emis.map(x=>{const dd=x.dueDate?daysTo(x.dueDate):null;const dstr=x.dueDate?new Date(x.dueDate).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—';
-      return `<tr><td>${x.name} <span class="pill ${x.scope==='business'?'biz':'per'}">${x.scope}</span></td><td class="muted">${x.card||'—'}</td><td class="num">${fmt(x.amount)}</td><td class="num">${x.months} mo</td><td class="muted" style="font-size:12px">${dstr}${dd!=null&&dd<=5?` <span class="${dd<0?'val-red':'val-gold'}">${dd<0?'overdue':dd===0?'today':dd+'d'}</span>`:''}</td><td style="text-align:right;white-space:nowrap">${x.months>0?`<button class="btn sm gold" onclick="payEMI('${x.id}')">Paid</button> `:''}<button class="btn sm danger" onclick="delEMI('${x.id}')">✕</button></td></tr>`;}).join('')||'<tr><td colspan="6" class="empty">No EMIs yet.</td></tr>'}
-    </tbody></table>
+    ${DB.emis.length?DB.emis.map(x=>{const dd=x.dueDate?daysTo(x.dueDate):null;const dstr=x.dueDate?new Date(x.dueDate).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—';
+      return `<div class="list-row"><div><div>${x.name} <span class="pill ${x.scope==='business'?'biz':'per'}">${x.scope}</span></div><div class="muted" style="font-size:11.5px">${x.card||'—'} · ${x.months} mo left · next ${dstr}${dd!=null&&dd<=5?` <span class="${dd<0?'val-red':'val-gold'}">${dd<0?'overdue':dd===0?'today':dd+'d'}</span>`:''}</div></div><div style="text-align:right;white-space:nowrap"><span class="num">${fmt(x.amount)}</span><div style="margin-top:4px">${x.months>0?`<button class="btn sm gold" onclick="payEMI('${x.id}')">Paid</button> `:''}<button class="btn sm danger" onclick="delEMI('${x.id}')">✕</button></div></div></div>`;}).join(''):'<div class="empty">No EMIs yet.</div>'}
     ${(()=>{const byCard={};DB.emis.forEach(x=>{const k=x.card||'—';byCard[k]=byCard[k]||{mo:0,rem:0};byCard[k].mo+=x.amount;byCard[k].rem+=x.amount*x.months;});const ks=Object.keys(byCard);return ks.length?`<div class="muted" style="font-size:12px;margin-top:12px">By card — ${ks.map(k=>`<b>${k}</b>: ${fmt(byCard[k].mo)}/mo, ${fmt(byCard[k].rem)} left`).join(' · ')}</div>`:'';})()}`;
   main.appendChild(e);
 }
@@ -1131,9 +1131,8 @@ function vSubs(){
     kpi('Personal',fmt(sumBy(per,s=>s.amount)),`${per.length} subs`,'val-blue');
   main.appendChild(top);
   const c=el('div','card');c.style.marginTop='16px';
-  c.innerHTML=`<div class="sectit" style="margin:0 0 14px">Recurring</div><table><thead><tr><th>Service</th><th>Paid with</th><th>Scope</th><th>Next charge</th><th>Amount</th><th></th></tr></thead><tbody>
-   ${[...recurring].sort((a,b)=>subDays(a)-subDays(b)).map(s=>{const nd=subDate(s);return `<tr><td>${s.name}</td><td class="muted">${s.card||'—'}</td><td><span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></td><td class="muted">${nd?nd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—'}${s.freq==='yearly'?' · yearly':' · monthly'}</td><td class="num">${fmt(s.amount)}</td><td style="text-align:right"><button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></td></tr>`;}).join('')||'<tr><td colspan="6" class="empty">No recurring subscriptions.</td></tr>'}
-   </tbody></table>`;
+  c.innerHTML=`<div class="sectit" style="margin:0 0 14px">Recurring</div>`+
+   ([...recurring].sort((a,b)=>subDays(a)-subDays(b)).map(s=>{const nd=subDate(s);return `<div class="list-row"><div><div>${s.name} <span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></div><div class="muted" style="font-size:11.5px">${s.card||'—'} · ${s.freq==='yearly'?'yearly':'monthly'}${nd?' · next '+nd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}):''}</div></div><div style="text-align:right;white-space:nowrap"><span class="num">${fmt(s.amount)}</span> <button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></div></div>`;}).join('')||'<div class="empty">No recurring subscriptions.</div>');
   main.appendChild(c);
   const pc=el('div','card');pc.style.marginTop='16px';
   pc.innerHTML=`<div class="sectit" style="margin:0 0 4px">Pay as you go</div>
@@ -1466,6 +1465,7 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.15.1',notes:['Renamed to “Finance Centre”.','Pinch/double-tap zoom is now disabled for a fixed, app-like feel — screens scroll instead of zooming.','EMIs and recurring subscriptions are now tidy cards on mobile (no more sideways scrolling).','Backups now save as a single file (atlas-backup.json) that replaces the old one instead of piling up.']},
  {v:'1.15.0',notes:['<b>Cash-Flow Forecast</b> — a 60-day projection of money in vs out with a running balance, and a warning if you’ll dip into the red before a payday. Set your “cash on hand” and payday from the screen.','<b>Auto-backup</b> — turn on weekly or daily and Atlas downloads a backup on open; keep your Downloads folder syncing to Drive and it lands in the cloud.','<b>Vehicles now count toward Net Worth</b> — add a market value in Garage.','<b>Multiple income sources</b> — track shop drawings, rent, salary separately; they total into your monthly income.','<b>Spending budgets</b> — set a monthly cap per category and see progress bars with a warning as you approach.','<b>Goals</b> now show a projected finish date and an optional target date.','<b>Zakat hawl tracker</b> — counts down the lunar year to when your Zakat is due.','<b>Prepayment calculator</b> on bank loans — see the interest you’d save before paying.','Smarter Home nudges (cash dips, bills due, renewals, budget overspend).']},
  {v:'1.14.0',notes:['Cards redesigned like a card-bill app: each card shows the current <b>bill amount, due date and statement date</b>, with the total due across all cards at the top.','<b>Update bill</b> and <b>Record payment</b> are now one tap — partial payments are supported, and paying lowers the card balance automatically.','EMIs now carry a real <b>next due date</b> and a “Paid” button to tick off each month.','Subscriptions can be set to <b>Pay as you go</b> for usage-based services (cloud, AI credits, etc.) — these stay out of your fixed monthly total; log each charge as it happens.','Every date field uses a calendar picker.']},
  {v:'1.13.0',notes:['Debts, Loans and “Owed to Me” are now one screen: <b>Debts &amp; Dues</b>, split into two clear sections — <b>Loans from Banks</b> and <b>Individuals</b>.','Each individual now has a single running history. Log money you gave or got, each with a date and payment mode, and the app shows one net balance — whether they owe you or you owe them.','Your old friend/family loans and “owed to me” entries were merged into these per-person histories automatically.']},
@@ -2279,7 +2279,7 @@ function openBackup(){
   const lb=DB.meta&&DB.meta.lastBackup;const bkDays=lb?-daysTo(lb.slice(0,10)):null;
   const freq=DB.meta&&DB.meta.autoBackup||'off';
   modal('Backup &amp; Restore',`
-    <p class="muted" style="font-size:13px;margin-bottom:14px">Your data lives only in this browser. A JSON backup keeps it safe — the vault stays AES-encrypted inside it. ${lb?`Last backup ${bkDays===0?'today':bkDays+' day'+(bkDays===1?'':'s')+' ago'}.`:'You haven\'t backed up yet.'}</p>
+    <p class="muted" style="font-size:13px;margin-bottom:14px">Your data lives only in this browser. A JSON backup keeps it safe — the vault stays AES-encrypted inside it. Backups save as <b>atlas-backup.json</b> (same name each time, so it replaces the old one rather than piling up). ${lb?`Last backup ${bkDays===0?'today':bkDays+' day'+(bkDays===1?'':'s')+' ago'}.`:'You haven\'t backed up yet.'}</p>
     <button class="btn gold" style="width:100%;margin-bottom:10px" onclick="doBackup()">⤓ Back up now</button>
     <div class="field"><label>Auto-backup reminder &amp; export</label><select id="bkFreq" onchange="setAutoBackup(this.value)">
       <option value="off" ${freq==='off'?'selected':''}>Off</option>
@@ -2292,9 +2292,9 @@ function setAutoBackup(v){DB.meta=DB.meta||{};DB.meta.autoBackup=v;save();toast(
 function doBackup(silent){
   const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download='atlas-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();
+  a.download='atlas-backup.json';a.click();
   DB.meta=DB.meta||{};DB.meta.lastBackup=new Date().toISOString();save();
-  if(!silent){closeModal();toast('Backup downloaded');}else{toast('Auto-backup saved to Downloads');}
+  if(!silent){closeModal();toast('Backup saved');}else{toast('Auto-backup saved');}
 }
 function maybeAutoBackup(){
   const freq=DB.meta&&DB.meta.autoBackup;if(!freq||freq==='off')return;
@@ -2309,7 +2309,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.15.0';
+const APP_VERSION='1.15.1';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
