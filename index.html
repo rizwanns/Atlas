@@ -196,7 +196,10 @@ section.on{display:block}
       <a data-v="subs"><span class="ic">∞</span> Subscriptions</a>
       <div class="sep">Wealth</div>
       <a data-v="networth"><span class="ic">▲</span> Net Worth</a>
+      <a data-v="safety"><span class="ic">⛨</span> Safety Net</a>
+      <a data-v="gold"><span class="ic">❖</span> Gold</a>
       <a data-v="goals"><span class="ic">◎</span> Goals</a>
+      <a data-v="bizrep"><span class="ic">≋</span> Biz vs Personal</a>
       <a data-v="calendar"><span class="ic">▦</span> Cash-Flow Calendar</a>
       <div class="sep">Life</div>
       <a data-v="vacation"><span class="ic">✈</span> Vacation Planner</a>
@@ -255,6 +258,8 @@ function seed(){
     lifestyle:[],
     expenses:[],
     nwHistory:[],
+    sinking:[],
+    gold:[],
     receivables:[],
     meta:{lastSeenVersion:null},
     vaultEnc:null
@@ -266,6 +271,8 @@ function load(){try{const r=localStorage.getItem(LS_KEY);return r?JSON.parse(r):
 if(!DB.receivables)DB.receivables=[];
 if(!DB.expenses)DB.expenses=[];
 if(!DB.nwHistory)DB.nwHistory=[];
+if(!DB.sinking)DB.sinking=[];
+if(!DB.gold)DB.gold=[];
 if(!DB.meta)DB.meta={lastSeenVersion:'1.5.0'};
 function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(DB));return true;}catch(e){return false;}}
 function uid(){return 'x'+Math.random().toString(36).slice(2,9);}
@@ -419,7 +426,7 @@ function render(){
   const view=document.body.dataset.view||'overview';
   $('#main').innerHTML='';
   ({home:vHome,overview:vOverview,advisor:vAdvisor,debts:vDebts,owed:vOwed,repay:vRepay,cards:vCards,subs:vSubs,
-    networth:vNet,goals:vGoals,calendar:vCal,vacation:vVac,garage:vGarage,lifestyle:vLife,
+    networth:vNet,safety:vSafety,gold:vGold,bizrep:vBizRep,goals:vGoals,calendar:vCal,vacation:vVac,garage:vGarage,lifestyle:vLife,
     cardvault:vCardVault,loginvault:vLoginVault}[view]||vHome)();
   // animate bars
   setTimeout(()=>document.querySelectorAll('.bar>span[data-w]').forEach(s=>s.style.width=s.dataset.w),30);
@@ -1045,6 +1052,7 @@ function rmRecv(rid,pid){const r=DB.receivables.find(x=>x.id===rid);r.payments=(
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.8.0',notes:['Safety Net — emergency-fund runway (how many months you could cover) plus sinking funds for lumpy bills like insurance, festivals and advance tax.','Gold tracker — log grams, purity and what you paid; set today\'s rate to see live value and gain/loss.','Business vs Personal report — your debts, obligations and spending split side by side for GST/ITR.','Import a CSV bank/card statement straight into Spending — read on-device only, nothing uploaded.']},
  {v:'1.7.0',notes:['New Spending tracker — log expenses by category and see where your money goes each month.','Net-worth trend chart that builds month over month.','Backup reminders so your data stays safe.','Smarter “Heads Up” nudges on the Home screen.']},
  {v:'1.6.0',notes:['New “Owed to Me” ledger — track who owes you and record each repayment (partial payments supported).','Goals now suggest where your monthly savings should go — priority drives the split (P1 fills first).','This “What’s New” note pops up whenever the app updates.']},
  {v:'1.5.0',notes:['Goals: log actual savings with amount + where it’s kept (bank / gold / FD); see saved-to-date and a location breakdown.']},
@@ -1189,7 +1197,7 @@ function saveRepair(carId){const c=DB.cars.find(x=>x.id===carId);c.repairs.push(
 /* ---- LIFESTYLE ---- */
 function vLife(){
   const main=$('#main');
-  main.innerHTML=header('Spending','Log expenses &amp; see where it goes',`<span class="chip gold" onclick="addExpense()" style="cursor:pointer">+ Add expense</span>`);
+  main.innerHTML=header('Spending','Log expenses &amp; see where it goes',`<span class="chip gold" onclick="addExpense()" style="cursor:pointer">+ Add</span> <span class="chip" onclick="openCsvImport()" style="cursor:pointer">⤓ Import CSV</span>`);
   const ym=new Date().toISOString().slice(0,7);
   const monthExp=(DB.expenses||[]).filter(e=>(e.date||'').slice(0,7)===ym);
   const tot=sumBy(monthExp,e=>e.amount), biz=sumBy(monthExp.filter(e=>e.scope==='business'),e=>e.amount);
@@ -1227,6 +1235,212 @@ function addExpense(){
    <button class="btn gold" style="width:100%" onclick="saveExpense()">Add</button>`);}
 function saveExpense(){const amt=+$('#exa').value||0;if(amt<=0){toast('Enter an amount');return;}DB.expenses=DB.expenses||[];DB.expenses.push({id:uid(),amount:amt,category:$('#exc').value,method:$('#exm').value,scope:$('#exs').value,date:$('#exd').value||new Date().toISOString().slice(0,10),note:$('#exn').value||''});save();closeModal();render();toast(`Added ${fmt(amt)}`);}
 function delExpense(id){DB.expenses=DB.expenses.filter(e=>e.id!==id);save();render();}
+
+/* ---- CSV IMPORT (reads on-device, nothing uploaded) ---- */
+function parseCSV(text){
+  const rows=[];let row=[],cur='',q=false;
+  text=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=c;}
+    else{if(c==='"')q=true;else if(c===','){row.push(cur);cur='';}else if(c==='\n'){row.push(cur);rows.push(row);row=[];cur='';}else cur+=c;}
+  }
+  if(cur!==''||row.length){row.push(cur);rows.push(row);}
+  return rows.filter(r=>r.some(x=>(x||'').trim()!==''));
+}
+function openCsvImport(){
+  modal('Import statement (CSV)',`
+   <p class="muted" style="font-size:12.5px;margin-bottom:12px">Pick a CSV export from your bank or card portal. It's read on this device only — nothing is uploaded anywhere.</p>
+   <input type="file" id="csvFile" accept=".csv,text/csv" style="width:100%;margin-bottom:8px">
+   <button class="btn gold" style="width:100%" onclick="csvLoad()">Next</button>`);
+}
+function csvLoad(){
+  const f=$('#csvFile').files&&$('#csvFile').files[0];if(!f){toast('Choose a file');return;}
+  const r=new FileReader();r.onload=()=>{const rows=parseCSV(r.result);if(rows.length<2){toast('Could not read rows');return;}window._CSV=rows;csvMap();};r.readAsText(f);
+}
+function csvMap(){
+  const rows=window._CSV;const head=rows[0];
+  const opts=head.map((h,i)=>`<option value="${i}">${(h||('Column '+(i+1))).slice(0,28)}</option>`).join('');
+  const cardOpts=DB.cards.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
+  // guess columns
+  const gi=(re)=>{const x=head.findIndex(h=>re.test((h||'').toLowerCase()));return x<0?0:x;};
+  const gd=gi(/date/),ga=gi(/debit|withdraw|amount|spent/),gn=gi(/desc|narrat|particular|detail|remark/);
+  modal('Map columns',`
+   <p class="muted" style="font-size:12px;margin-bottom:12px">Tell me which column is which. We'll import debits as expenses.</p>
+   <div class="field"><label>Date column</label><select id="mapd">${opts}</select></div>
+   <div class="field"><label>Amount column</label><select id="mapa">${opts}</select></div>
+   <div class="field"><label>Description column</label><select id="mapn">${opts}</select></div>
+   <div class="row"><div class="field"><label>Default scope</label><select id="maps"><option value="personal">Personal</option><option value="business">Business</option></select></div>
+   <div class="field"><label>Paid via</label><select id="mapm"><option value="">—</option><option value="Cash">Cash</option><option value="UPI">UPI</option><option value="Debit card">Debit card</option>${cardOpts}</select></div></div>
+   <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0 12px"><input type="checkbox" id="maphdr" checked style="width:auto"> First row is a header</label>
+   <button class="btn gold" style="width:100%" onclick="csvPreview()">Preview</button>`);
+  $('#mapd').value=gd;$('#mapa').value=ga;$('#mapn').value=gn;
+}
+function csvParseAmt(s){const n=parseFloat((s||'').toString().replace(/[^0-9.\-]/g,''));return isNaN(n)?0:Math.abs(n);}
+function csvDate(s){s=(s||'').trim();if(!s)return new Date().toISOString().slice(0,10);
+  const m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if(m){let d=+m[1],mo=+m[2],y=+m[3];if(mo>12&&d<=12){const t=d;d=mo;mo=t;}if(y<100)y+=2000;
+    return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
+  const dt=new Date(s);return isNaN(dt)?new Date().toISOString().slice(0,10):dt.toISOString().slice(0,10);}
+function csvRows(){
+  const rows=window._CSV,di=+$('#mapd').value,ai=+$('#mapa').value,ni=+$('#mapn').value;
+  const start=$('#maphdr').checked?1:0;const out=[];
+  for(let i=start;i<rows.length;i++){const r=rows[i];const amt=csvParseAmt(r[ai]);if(amt<=0)continue;
+    const iso=csvDate(r[di]);
+    out.push({amount:amt,date:iso,note:(r[ni]||'').trim().slice(0,60)});}
+  return out;
+}
+function csvPreview(){
+  const items=csvRows();window._CSVITEMS=items;window._CSVMETA={scope:$('#maps').value,method:$('#mapm').value};
+  if(!items.length){toast('No debit rows found — check the amount column');return;}
+  const sample=items.slice(0,5).map(x=>`<div class="list-row" style="padding:6px 0"><span class="muted" style="font-size:11.5px">${x.date} · ${x.note||'—'}</span><span class="num" style="font-size:12.5px">${fmt(x.amount)}</span></div>`).join('');
+  modal('Confirm import',`
+   <p class="muted" style="font-size:12.5px;margin-bottom:10px">Found <b>${items.length}</b> expense rows, totalling <b>${fmt(sumBy(items,x=>x.amount))}</b>. First few:</p>
+   ${sample}
+   <p class="muted" style="font-size:11.5px;margin:12px 0">Dates read as DD/MM/YYYY. They'll import as “Other” category — recategorise any in the Recent list.</p>
+   <button class="btn gold" style="width:100%" onclick="csvImport()">Import ${items.length} expenses</button>`);
+}
+function csvImport(){
+  const items=window._CSVITEMS||[],meta=window._CSVMETA||{scope:'personal',method:''};
+  DB.expenses=DB.expenses||[];
+  items.forEach(x=>DB.expenses.push({id:uid(),amount:x.amount,category:'Other',method:meta.method||'',scope:meta.scope||'personal',date:x.date,note:x.note||'imported'}));
+  if(save()){closeModal();render();toast(`Imported ${items.length} expenses`);}else{toast('Storage full — import too large');}
+}
+
+/* ---- SAFETY NET (emergency runway + sinking funds) ---- */
+function avgMonthlyExpense(){
+  const by={};(DB.expenses||[]).forEach(e=>{const k=(e.date||'').slice(0,7);if(k)by[k]=(by[k]||0)+e.amount;});
+  const ks=Object.keys(by).sort().slice(-3);if(!ks.length)return 0;return sumBy(ks,k=>by[k])/ks.length;
+}
+function sinkSaved(s){return sumBy(s.deposits||[],d=>d.amount);}
+function sinkMonths(s){const d=daysTo(s.due);if(d==null)return 1;return Math.max(1,Math.ceil(d/30));}
+function vSafety(){
+  const main=$('#main');const m=M();
+  main.innerHTML=header('Safety Net','Emergency runway &amp; planned funds',`<span class="chip gold" onclick="editSafety()" style="cursor:pointer">⚙ Set figures</span>`);
+  const reserves=DB.plan.reserves||0;
+  const fixed=m.emiOut+m.subOut;
+  const essentials=(DB.plan.essentials>0?DB.plan.essentials:avgMonthlyExpense()+fixed);
+  const months=essentials>0?reserves/essentials:0;
+  const status=months>=6?['Strong','val-green','ok']:months>=3?['Okay','val-gold','warn']:['Build it','val-red','crit'];
+  const target6=essentials*6;
+  const top=el('div','card');
+  top.innerHTML=`<div class="lbl">Emergency Runway <span class="pill ${status[2]}">${status[0]}</span></div>
+    <div class="kpi sm ${status[1]}">${months.toFixed(1)} <span class="muted" style="font-size:14px">months covered</span></div>
+    <div class="bar ${months>=6?'green':months>=3?'':'red'}"><span data-w="${Math.min(100,Math.round(months/6*100))}%" style="width:0"></span></div>
+    <div class="sub" style="margin-top:10px">Reserves ${fmt(reserves)} · burn ~${fmt(Math.round(essentials))}/mo · 6-month target ${fmtL(target6)}${reserves<target6?` (${fmtL(target6-reserves)} to go)`:' — reached 🎉'}</div>
+    <div class="muted" style="font-size:11.5px;margin-top:8px">Burn = ${DB.plan.essentials>0?'your set essentials':'recent avg spending + EMIs + subscriptions'}. Tap “Set figures” to adjust.</div>`;
+  main.appendChild(top);
+  const sh=el('div','card');sh.style.marginTop='16px';
+  sh.innerHTML=`<div class="sectit" style="margin:0 0 4px">Sinking Funds <small>SAVE FOR KNOWN COSTS</small></div>
+    <p class="muted" style="font-size:12px;margin:0 0 12px">Set aside monthly for lumpy bills — insurance, festivals, advance tax — so they never surprise you.</p>
+    <button class="btn sm gold" onclick="addSink()">+ Add fund</button>`;
+  main.appendChild(sh);
+  (DB.sinking||[]).forEach(s=>{
+    const saved=sinkSaved(s),rem=Math.max(0,s.target-saved),mos=sinkMonths(s),sugg=Math.ceil(rem/mos),pct=s.target?Math.min(100,Math.round(saved/s.target*100)):0;
+    const c=el('div','card');c.style.marginTop='12px';
+    c.innerHTML=`<div class="lbl">${s.name}</div>
+      <div class="kpi sm">${fmt(saved)} <span class="muted" style="font-size:13px">/ ${fmt(s.target)}</span></div>
+      <div class="bar green"><span data-w="${pct}%" style="width:0"></span></div>
+      <div class="sub" style="margin-top:8px">${s.due?'due '+new Date(s.due).toLocaleDateString('en-IN',{month:'short',year:'numeric'})+' · ':''}${rem>0?`set aside ~${fmt(sugg)}/mo`:'fully funded 🎉'}</div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm gold" onclick="depositSink('${s.id}',${rem>0?sugg:0})">+ Add money</button><button class="btn sm" onclick="editSink('${s.id}')">Edit</button><button class="btn sm danger" onclick="delSink('${s.id}')">Delete</button></div>`;
+    main.appendChild(c);
+  });
+}
+function editSafety(){modal('Safety figures',`
+   <div class="field"><label>Emergency / liquid reserves ₹</label><input id="sfr" type="number" value="${DB.plan.reserves||0}"></div>
+   <div class="field"><label>Monthly essentials ₹ <span class="muted">(blank = auto from spending + EMIs + subs)</span></label><input id="sfe" type="number" value="${DB.plan.essentials||''}"></div>
+   <button class="btn gold" style="width:100%" onclick="saveSafety()">Save</button>`);}
+function saveSafety(){DB.plan.reserves=+$('#sfr').value||0;DB.plan.essentials=+$('#sfe').value||0;save();closeModal();render();}
+function addSink(){modal('Add sinking fund',`
+   <div class="field"><label>Name</label><input id="skn" placeholder="Car insurance / Advance tax / Eid"></div>
+   <div class="row"><div class="field"><label>Target ₹</label><input id="skt" type="number"></div>
+   <div class="field"><label>Needed by</label><input id="skd" type="date"></div></div>
+   <button class="btn gold" style="width:100%" onclick="saveSink()">Save</button>`);}
+function saveSink(){DB.sinking.push({id:uid(),name:$('#skn').value||'Fund',target:+$('#skt').value||0,due:$('#skd').value||'',deposits:[]});save();closeModal();render();}
+function editSink(id){const s=DB.sinking.find(x=>x.id===id);modal('Edit fund',`
+   <div class="field"><label>Name</label><input id="skn" value="${s.name||''}"></div>
+   <div class="row"><div class="field"><label>Target ₹</label><input id="skt" type="number" value="${s.target||0}"></div>
+   <div class="field"><label>Needed by</label><input id="skd" type="date" value="${s.due||''}"></div></div>
+   <button class="btn gold" style="width:100%" onclick="updSink('${id}')">Save</button>`);}
+function updSink(id){const s=DB.sinking.find(x=>x.id===id);s.name=$('#skn').value||s.name;s.target=+$('#skt').value||0;s.due=$('#skd').value||'';save();closeModal();render();}
+function delSink(id){DB.sinking=DB.sinking.filter(s=>s.id!==id);save();render();}
+function depositSink(id,preset){const s=DB.sinking.find(x=>x.id===id);modal('Add to '+s.name,`
+   <div class="field"><label>Amount ₹</label><input id="ska" type="number" value="${preset||''}"></div>
+   <div class="field"><label>Date</label><input id="skdt" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+   <button class="btn gold" style="width:100%" onclick="saveSinkDep('${id}')">Add</button>`);}
+function saveSinkDep(id){const s=DB.sinking.find(x=>x.id===id);const amt=+$('#ska').value||0;if(amt<=0){toast('Enter an amount');return;}s.deposits=s.deposits||[];s.deposits.push({id:uid(),amount:amt,date:$('#skdt').value||new Date().toISOString().slice(0,10)});save();closeModal();render();toast(`Added ${fmt(amt)}`);}
+
+/* ---- GOLD HOLDINGS ---- */
+function goldVal(g,rate){return g.grams*rate*((g.purity||24)/24);}
+function vGold(){
+  const main=$('#main');
+  main.innerHTML=header('Gold','Holdings &amp; live value',`<span class="chip gold" onclick="addGold()" style="cursor:pointer">+ Add gold</span>`);
+  const rate=DB.plan.goldRate||0;
+  const rc=el('div','card');
+  rc.innerHTML=`<div class="lbl">Today's 24K rate (per gram)</div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:8px"><input id="grate" type="number" value="${rate||''}" placeholder="e.g. 9200" style="flex:1"><button class="btn sm gold" onclick="setGoldRate()">Update</button></div>
+    <div class="muted" style="font-size:11.5px;margin-top:8px">Enter the current market rate yourself — the app values your holdings against it.</div>`;
+  main.appendChild(rc);
+  if(!DB.gold.length){const e=el('div','card');e.style.marginTop='16px';e.innerHTML='<div class="empty">No gold logged yet — tap “+ Add gold”.</div>';main.appendChild(e);return;}
+  const grams=sumBy(DB.gold,g=>g.grams),invested=sumBy(DB.gold,g=>g.invested),value=rate?sumBy(DB.gold,g=>goldVal(g,rate)):0,gain=value-invested;
+  const top=el('div','grid g3');top.style.marginTop='16px';
+  top.innerHTML=kpi('Total gold',grams.toFixed(2)+' g',`${DB.gold.length} ${DB.gold.length===1?'item':'items'}`,'val-gold')+
+    kpi('Invested',fmtL(invested),'what you paid','val-blue')+
+    kpi(rate?'Current value':'Set a rate',rate?fmtL(value):'—',rate?`${gain>=0?'▲':'▼'} ${fmtL(Math.abs(gain))} (${invested?Math.round(gain/invested*100):0}%)`:'enter rate above',gain>=0?'val-green':'val-red');
+  main.appendChild(top);
+  DB.gold.forEach(g=>{const v=rate?goldVal(g,rate):0;const gn=v-g.invested;
+    const c=el('div','card');c.style.marginTop='12px';
+    c.innerHTML=`<div class="lbl">${g.desc||'Gold'} <span class="pill per">${g.purity||24}K</span></div>
+      <div class="kpi sm">${g.grams} g <span class="muted" style="font-size:13px">· ${rate?fmtL(v):'—'}</span></div>
+      <div class="sub" style="margin-top:6px">Paid ${fmt(g.invested)}${rate?` · ${gn>=0?'gain':'loss'} ${fmt(Math.abs(Math.round(gn)))}`:''}${g.date?' · '+new Date(g.date).toLocaleDateString('en-IN',{month:'short',year:'numeric'}):''}</div>
+      <div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm" onclick="editGold('${g.id}')">Edit</button><button class="btn sm danger" onclick="delGold('${g.id}')">Delete</button></div>`;
+    main.appendChild(c);
+  });
+}
+function setGoldRate(){DB.plan.goldRate=+$('#grate').value||0;save();render();toast('Rate updated');}
+function addGold(){modal('Add gold',`
+   <div class="field"><label>Description</label><input id="gdd" placeholder="Coins / chain / bangles"></div>
+   <div class="row"><div class="field"><label>Weight (g)</label><input id="gdg" type="number" step="0.001"></div>
+   <div class="field"><label>Purity</label><select id="gdp"><option value="24">24K</option><option value="22" selected>22K</option><option value="18">18K</option></select></div></div>
+   <div class="row"><div class="field"><label>Amount paid ₹</label><input id="gdi" type="number"></div>
+   <div class="field"><label>Bought</label><input id="gdt" type="date"></div></div>
+   <button class="btn gold" style="width:100%" onclick="saveGold()">Save</button>`);}
+function saveGold(){DB.gold.push({id:uid(),desc:$('#gdd').value||'Gold',grams:+$('#gdg').value||0,purity:+$('#gdp').value||22,invested:+$('#gdi').value||0,date:$('#gdt').value||''});save();closeModal();render();}
+function editGold(id){const g=DB.gold.find(x=>x.id===id);modal('Edit gold',`
+   <div class="field"><label>Description</label><input id="gdd" value="${g.desc||''}"></div>
+   <div class="row"><div class="field"><label>Weight (g)</label><input id="gdg" type="number" step="0.001" value="${g.grams||0}"></div>
+   <div class="field"><label>Purity</label><select id="gdp"><option value="24" ${g.purity===24?'selected':''}>24K</option><option value="22" ${g.purity===22?'selected':''}>22K</option><option value="18" ${g.purity===18?'selected':''}>18K</option></select></div></div>
+   <div class="row"><div class="field"><label>Amount paid ₹</label><input id="gdi" type="number" value="${g.invested||0}"></div>
+   <div class="field"><label>Bought</label><input id="gdt" type="date" value="${g.date||''}"></div></div>
+   <button class="btn gold" style="width:100%" onclick="updGold('${id}')">Save</button>`);}
+function updGold(id){const g=DB.gold.find(x=>x.id===id);g.desc=$('#gdd').value||g.desc;g.grams=+$('#gdg').value||0;g.purity=+$('#gdp').value||22;g.invested=+$('#gdi').value||0;g.date=$('#gdt').value||'';save();closeModal();render();}
+function delGold(id){DB.gold=DB.gold.filter(g=>g.id!==id);save();render();}
+
+/* ---- BUSINESS VS PERSONAL ---- */
+function vBizRep(){
+  const main=$('#main');const m=M();
+  main.innerHTML=header('Business vs Personal','Split across debts, outflow &amp; spending','');
+  const ym=new Date().toISOString().slice(0,7);
+  const me=(DB.expenses||[]).filter(e=>(e.date||'').slice(0,7)===ym);
+  const expBiz=sumBy(me.filter(e=>e.scope==='business'),e=>e.amount),expPer=sumBy(me.filter(e=>e.scope==='personal'),e=>e.amount);
+  const rows=[
+    ['Liabilities',m.biz.liab,m.per.liab],
+    ['Monthly EMIs + subs',m.biz.out,m.per.out],
+    ['Spending this month',expBiz,expPer]
+  ];
+  const card=el('div','card');
+  card.innerHTML=`<div class="sectit" style="margin:0 0 14px">Side by side</div>
+    <table><thead><tr><th></th><th>Business</th><th>Personal</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td>${r[0]}</td><td class="num val-blue">${fmt(r[1])}</td><td class="num val-green">${fmt(r[2])}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="muted" style="font-size:11.5px;margin-top:12px">Tag scope on each card, subscription, EMI, loan and expense to keep this accurate. Handy at GST/ITR time.</div>`;
+  main.appendChild(card);
+  const tb=expBiz+m.biz.out, tp=expPer+m.per.out;const tot=tb+tp||1;
+  const split=el('div','card');split.style.marginTop='16px';
+  split.innerHTML=`<div class="sectit" style="margin:0 0 14px">Monthly cash going out</div>
+    <div class="list-row" style="border:none;padding:0 0 6px"><span>Business</span><span class="num">${fmt(tb)} · ${Math.round(tb/tot*100)}%</span></div><div class="bar"><span data-w="${Math.round(tb/tot*100)}%" style="width:0"></span></div>
+    <div class="list-row" style="border:none;padding:12px 0 6px"><span>Personal</span><span class="num">${fmt(tp)} · ${Math.round(tp/tot*100)}%</span></div><div class="bar green"><span data-w="${Math.round(tp/tot*100)}%" style="width:0"></span></div>`;
+  main.appendChild(split);
+}
 
 /* ============================================================
    VAULT VIEWS
@@ -1383,7 +1597,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.7.0';
+const APP_VERSION='1.8.0';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
