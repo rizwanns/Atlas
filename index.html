@@ -377,7 +377,9 @@ function metrics(){
   const repay=DB.plan.extraRepayment;
   const surplus=income-outflow-goals-repay;
   const assets=sumBy(DB.assets,a=>a.value);
-  const networth=assets+peopleOwe-liabilities;
+  const carVal=sumBy(DB.cars||[],c=>+c.value||0);
+  const assetsAll=assets+carVal+peopleOwe;
+  const networth=assetsAll-liabilities;
   const cardLimit=sumBy(DB.cards,c=>c.limit);
   const util=cardLimit?Math.round(cardTotal/cardLimit*100):0;
   // business vs personal
@@ -392,7 +394,7 @@ function metrics(){
   const dfree=new Date();dfree.setMonth(dfree.getMonth()+mo);
   const ymNow=new Date().toISOString().slice(0,7);
   const expMonth=sumBy((DB.expenses||[]).filter(e=>(e.date||'').slice(0,7)===ymNow),e=>e.amount);
-  return {loanTotal,cardTotal,liabilities,emiOut,subOut,outflow,income,goals,repay,surplus,assets,networth,cardLimit,util,expMonth,
+  return {loanTotal,cardTotal,liabilities,emiOut,subOut,outflow,income,goals,repay,surplus,assets,carVal,assetsAll,networth,cardLimit,util,expMonth,
     biz:{liab:bizLoan+bizCard,out:bizOut},per:{liab:perLoan+perCard,out:perOut},dfreeMonths:mo,dfree,ff,peopleOwe,rAvg};
 }
 
@@ -759,7 +761,7 @@ function vDebts(){
       <td class="num ${l.rate>=12?'val-red':''}">${l.rate}%</td>
       <td class="num">${fmt(l.balance)}</td>
       <td class="muted" style="font-size:12px">${l.lastPaid?new Date(l.lastPaid).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—'}</td>
-      <td style="text-align:right"><button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button> <button class="btn sm danger" onclick="delLoan('${l.id}')">✕</button></td>
+      <td style="text-align:right"><button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button> ${l.rate>0?`<button class="btn sm" onclick="prepayCalc('${l.id}')">Prepay</button> `:''}<button class="btn sm danger" onclick="delLoan('${l.id}')">✕</button></td>
    </tr>`).join('')}
    </tbody></table></div>
    <div class="debtcards">
@@ -776,6 +778,7 @@ function vDebts(){
       </div>
       <div class="dc-actions">
         <button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button>
+        ${l.rate>0?`<button class="btn sm" onclick="prepayCalc('${l.id}')">Prepay calc</button>`:''}
         <button class="btn sm danger icon" onclick="delLoan('${l.id}')">✕</button>
       </div>
    </div>`).join('')}
@@ -880,6 +883,15 @@ function confirmPay(id){
   toast(fmt(amt)+' paid · balance now '+fmt(l.balance));
 }
 function delLoan(id){DB.loans=DB.loans.filter(l=>l.id!==id);save();render();}
+function prepayCalc(id){const l=DB.loans.find(x=>x.id===id);if(!l)return;
+  modal('Prepayment — '+l.name,`
+   <p class="muted" style="font-size:12.5px;margin-bottom:12px">Balance ${fmt(l.balance)} at ${l.rate}% p.a. Enter an amount to prepay and see the interest it saves.</p>
+   <div class="field"><label>Prepay amount ₹</label><input id="ppa" type="number" oninput="ppPreview('${id}')"></div>
+   <div id="ppOut" class="muted" style="font-size:13px;margin:4px 0 12px"></div>
+   <button class="btn gold" style="width:100%" onclick="applyPrepay('${id}')">Apply as a payment</button>`);
+}
+function ppPreview(id){const l=DB.loans.find(x=>x.id===id);const o=document.getElementById('ppOut');if(!o)return;const amt=Math.min(+document.getElementById('ppa').value||0,l.balance);if(amt<=0){o.innerHTML='';return;}const yr=Math.round(amt*l.rate/100);const mo=Math.round(yr/12);o.innerHTML=`Saves about <b class="val-green">${fmt(mo)}/month</b> (${fmt(yr)}/year) in interest. New balance would be ${fmt(l.balance-amt)}.`;}
+function applyPrepay(id){const l=DB.loans.find(x=>x.id===id);const amt=Math.min(+document.getElementById('ppa').value||0,l.balance);if(amt<=0){toast('Enter an amount');return;}l.balance=Math.max(0,l.balance-amt);l.payments=l.payments||[];l.payments.push({id:uid(),amount:amt,date:new Date().toISOString().slice(0,10)});l.lastPaid=new Date().toISOString().slice(0,10);save();closeModal();render();toast('Prepaid '+fmt(amt));}
 function addLoan(){
   modal('Add bank loan',`
     <div class="field"><label>Loan name</label><input id="ln" placeholder="e.g. Gold loan"></div>
@@ -1167,7 +1179,7 @@ function vNet(){
   const main=$('#main');const m=M();
   main.innerHTML=header('Net Worth','Assets vs liabilities',`<span class="chip gold" onclick="addAsset()" style="cursor:pointer">+ Add asset</span>`);
   const top=el('div','grid g3');
-  top.innerHTML=kpi('Assets',fmtL(m.assets+m.peopleOwe),`holdings + ${fmtL(m.peopleOwe)} owed to you`,'val-green')+
+  top.innerHTML=kpi('Assets',fmtL(m.assetsAll),`incl. ${fmtL(m.carVal)} vehicles · ${fmtL(m.peopleOwe)} owed`,'val-green')+
     kpi('Liabilities',fmtL(m.liabilities),'banks + people + cards','val-red')+
     kpi('Net Worth',fmtL(m.networth),'assets − liabilities','val-gold');
   main.appendChild(top);
@@ -1189,11 +1201,12 @@ function vNet(){
   }
   main.appendChild(tc);
   const c=el('div','card');c.style.marginTop='16px';
-  const max=Math.max(1,...DB.assets.map(a=>a.value),m.peopleOwe);
+  const max=Math.max(1,...DB.assets.map(a=>a.value),m.carVal,m.peopleOwe);
   c.innerHTML=`<div class="sectit" style="margin:0 0 14px">Asset Allocation</div>`+
     DB.assets.sort((a,b)=>b.value-a.value).map(a=>`<div style="margin-bottom:16px"><div class="list-row" style="border:none;padding:0 0 6px"><span>${a.name} <span class="muted">· ${a.type}</span></span><span class="num">${fmtL(a.value)} <button class="btn sm danger" onclick="delAsset('${a.id}')" style="margin-left:8px">✕</button></span></div><div class="bar"><span data-w="${Math.round(a.value/max*100)}%" style="width:0"></span></div></div>`).join('')+
+    (m.carVal>0?`<div style="margin-bottom:16px"><div class="list-row" style="border:none;padding:0 0 6px"><span>Vehicles <span class="muted">· from Garage</span></span><span class="num">${fmtL(m.carVal)}</span></div><div class="bar" style="--c:var(--blue)"><span data-w="${Math.round(m.carVal/max*100)}%" style="width:0;background:var(--blue)"></span></div></div>`:'')+
     (m.peopleOwe>0?`<div style="margin-bottom:4px"><div class="list-row" style="border:none;padding:0 0 6px"><span>Owed to you <span class="muted">· individuals</span></span><span class="num">${fmtL(m.peopleOwe)}</span></div><div class="bar green"><span data-w="${Math.round(m.peopleOwe/max*100)}%" style="width:0"></span></div></div>`:'')+
-    (!DB.assets.length&&m.peopleOwe<=0?'<div class="empty">No assets yet — tap “+ Add asset”.</div>':'');
+    (!DB.assets.length&&m.carVal<=0&&m.peopleOwe<=0?'<div class="empty">No assets yet — tap “+ Add asset”.</div>':'');
   main.appendChild(c);
 }
 function addAsset(){modal('Add asset',`
@@ -1236,6 +1249,7 @@ function vGoals(){
       <div class="kpi sm">${fmtL(saved)} <span class="muted" style="font-size:14px">/ ${fmtL(go.target)}</span></div>
       <div class="bar green"><span data-w="${pct}%" style="width:0"></span></div>
       <div class="sub" style="margin-top:8px">${pct}% · ${fmt(left)} to go</div>
+      ${(()=>{const a=alloc[go.id]||0;let line='';if(left<=0)line='Funded 🎉';else if(a>0){const mo=Math.ceil(left/a);const pd=new Date();pd.setMonth(pd.getMonth()+mo);line='at this pace, done by '+pd.toLocaleDateString('en-IN',{month:'short',year:'numeric'})+' (~'+mo+' mo)';}if(go.targetDate){const dd=daysTo(go.targetDate);const tgt=new Date(go.targetDate).toLocaleDateString('en-IN',{month:'short',year:'numeric'});line=(line?line+' · ':'')+'target '+tgt+(dd!=null&&dd<0&&left>0?' ⚠ passed':'');}return line?`<div class="muted" style="font-size:12px;margin-top:6px">🎯 ${line}</div>`:'';})()}
       ${Object.keys(gw).length?`<div class="muted" style="font-size:12px;margin-top:10px">Stored in — ${Object.entries(gw).map(([k,v])=>`${k} ${fmt(v)}`).join(' · ')}</div>`:'<div class="muted" style="font-size:12px;margin-top:10px">No savings logged yet — tap “+ Log saving”.</div>'}
       ${alloc[go.id]>0?`<div style="margin-top:10px;font-size:12.5px;color:var(--gold2)">▸ Suggested this month: <b>${fmt(alloc[go.id])}</b> <button class="btn sm" style="margin-left:6px" onclick="logSaving('${go.id}',${Math.round(alloc[go.id])})">Log it</button></div>`:''}
       ${recent.length?`<div style="margin-top:8px">${recent.map(ct=>`<div class="list-row" style="padding:8px 0"><span class="muted" style="font-size:12px">${new Date(ct.date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} · ${ct.where||'—'}</span><span class="num" style="font-size:13px">${fmt(ct.amount)} <button class="btn sm danger" onclick="rmContrib('${go.id}','${ct.id}')">✕</button></span></div>`).join('')}</div>`:''}
@@ -1256,14 +1270,16 @@ function addGoal(){modal('Add goal',`
   <div class="field"><label>Name</label><input id="gn" placeholder="Emergency fund / Trip / New bike"></div>
   <div class="row"><div class="field"><label>Target ₹</label><input id="gt" type="number"></div>
   <div class="field"><label>Priority</label><select id="gp"><option value="1">P1 — fund first</option><option value="2">P2</option><option value="3" selected>P3</option></select></div></div>
+  <div class="field"><label>Target date (optional)</label><input id="gd" type="date"></div>
   <button class="btn gold" style="width:100%" onclick="saveGoal()">Save</button>`);}
-function saveGoal(){DB.goals.push({id:uid(),name:$('#gn').value||'Goal',target:+$('#gt').value||0,priority:+$('#gp').value||3,saved:0,contributions:[]});save();closeModal();render();}
+function saveGoal(){DB.goals.push({id:uid(),name:$('#gn').value||'Goal',target:+$('#gt').value||0,priority:+$('#gp').value||3,targetDate:$('#gd').value||'',saved:0,contributions:[]});save();closeModal();render();}
 function editGoal(id){const g=DB.goals.find(x=>x.id===id);modal('Edit goal',`
   <div class="field"><label>Name</label><input id="gn" value="${g.name||''}"></div>
   <div class="row"><div class="field"><label>Target ₹</label><input id="gt" type="number" value="${g.target||0}"></div>
   <div class="field"><label>Priority</label><select id="gp"><option value="1" ${g.priority===1?'selected':''}>P1 — fund first</option><option value="2" ${g.priority===2?'selected':''}>P2</option><option value="3" ${g.priority===3?'selected':''}>P3</option></select></div></div>
+  <div class="field"><label>Target date (optional)</label><input id="gd" type="date" value="${g.targetDate||''}"></div>
   <button class="btn gold" style="width:100%" onclick="updGoal('${id}')">Save</button>`);}
-function updGoal(id){const g=DB.goals.find(x=>x.id===id);g.name=$('#gn').value||g.name;g.target=+$('#gt').value||0;g.priority=+$('#gp').value||3;save();closeModal();render();}
+function updGoal(id){const g=DB.goals.find(x=>x.id===id);g.name=$('#gn').value||g.name;g.target=+$('#gt').value||0;g.priority=+$('#gp').value||3;g.targetDate=$('#gd').value||'';save();closeModal();render();}
 function delGoal(id){DB.goals=DB.goals.filter(g=>g.id!==id);save();render();}
 
 /* ---- PRIORITY ALLOCATION (P1 funds first) ---- */
@@ -1450,6 +1466,7 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.15.0',notes:['<b>Cash-Flow Forecast</b> — a 60-day projection of money in vs out with a running balance, and a warning if you’ll dip into the red before a payday. Set your “cash on hand” and payday from the screen.','<b>Auto-backup</b> — turn on weekly or daily and Atlas downloads a backup on open; keep your Downloads folder syncing to Drive and it lands in the cloud.','<b>Vehicles now count toward Net Worth</b> — add a market value in Garage.','<b>Multiple income sources</b> — track shop drawings, rent, salary separately; they total into your monthly income.','<b>Spending budgets</b> — set a monthly cap per category and see progress bars with a warning as you approach.','<b>Goals</b> now show a projected finish date and an optional target date.','<b>Zakat hawl tracker</b> — counts down the lunar year to when your Zakat is due.','<b>Prepayment calculator</b> on bank loans — see the interest you’d save before paying.','Smarter Home nudges (cash dips, bills due, renewals, budget overspend).']},
  {v:'1.14.0',notes:['Cards redesigned like a card-bill app: each card shows the current <b>bill amount, due date and statement date</b>, with the total due across all cards at the top.','<b>Update bill</b> and <b>Record payment</b> are now one tap — partial payments are supported, and paying lowers the card balance automatically.','EMIs now carry a real <b>next due date</b> and a “Paid” button to tick off each month.','Subscriptions can be set to <b>Pay as you go</b> for usage-based services (cloud, AI credits, etc.) — these stay out of your fixed monthly total; log each charge as it happens.','Every date field uses a calendar picker.']},
  {v:'1.13.0',notes:['Debts, Loans and “Owed to Me” are now one screen: <b>Debts &amp; Dues</b>, split into two clear sections — <b>Loans from Banks</b> and <b>Individuals</b>.','Each individual now has a single running history. Log money you gave or got, each with a date and payment mode, and the app shows one net balance — whether they owe you or you owe them.','Your old friend/family loans and “owed to me” entries were merged into these per-person histories automatically.']},
  {v:'1.12.2',notes:['App Lock no longer nags you on every refresh. Once you unlock, you stay unlocked until you actually close the app — reloading the page keeps you in. Fully closing and reopening asks again.']},
@@ -1475,23 +1492,51 @@ function showWhatsNew(force){
 }
 
 /* ---- CASH-FLOW CALENDAR ---- */
+function forecast(days){
+  days=days||60;
+  const start=new Date();start.setHours(0,0,0,0);
+  const end=new Date(start);end.setDate(end.getDate()+days);
+  const ev=[];
+  const pay=Math.min(DB.income.day||1,28), inc=DB.income.monthly||0;
+  if(inc>0){let d=new Date(start.getFullYear(),start.getMonth(),pay);while(d<start)d=new Date(d.getFullYear(),d.getMonth()+1,pay);for(;d<=end;d=new Date(d.getFullYear(),d.getMonth()+1,pay)){ev.push({date:new Date(d),label:'Income',amount:inc});}}
+  upcoming().forEach(p=>{let dt=p.date?new Date(p.date):null;if(!dt&&p.due!=null){dt=new Date(start);dt.setDate(dt.getDate()+p.due);}if(dt&&dt>=start&&dt<=end)ev.push({date:dt,label:p.name+(p.kind?' · '+p.kind:''),amount:-(p.amount||0)});});
+  DB.cards.forEach(c=>{const b=currentBill(c);if(b){const o=billOut(b);if(o>0&&b.due){const dt=new Date(b.due);if(dt>=start&&dt<=end)ev.push({date:dt,label:c.name+' bill',amount:-o});}}});
+  (DB.renewals||[]).forEach(r=>{if(r.expiry&&r.amount){const dt=new Date(r.expiry);if(dt>=start&&dt<=end)ev.push({date:dt,label:r.name+' renewal',amount:-(r.amount||0)});}});
+  ev.sort((a,b)=>a.date-b.date);
+  let bal=DB.plan.startCash||0;let low={bal,date:start};
+  ev.forEach(e=>{bal+=e.amount;e.bal=bal;if(bal<low.bal)low={bal,date:new Date(e.date)};});
+  return {events:ev,start:DB.plan.startCash||0,end:bal,low,from:start,to:end};
+}
+function setCash(){modal('Cash on hand',`
+   <p class="muted" style="font-size:12.5px;margin-bottom:12px">Your current bank + cash balance. The forecast starts from here and adds income / subtracts dues over the next 60 days.</p>
+   <div class="field"><label>Cash on hand ₹</label><input id="scash" type="number" value="${DB.plan.startCash||''}"></div>
+   <button class="btn gold" style="width:100%" onclick="DB.plan.startCash=+document.getElementById('scash').value||0;save();closeModal();render()">Save</button>`);}
 function vCal(){
   const main=$('#main');
-  main.innerHTML=header('Cash-Flow Calendar','Next 30 days of outflow','');
+  main.innerHTML=header('Cash-Flow Forecast','Next 60 days · projected balance',`<span class="chip gold" onclick="setCash()" style="cursor:pointer">⚙ Cash on hand</span>`);
+  const f=forecast(60);
+  const top=el('div','grid g3');
+  top.innerHTML=kpi('Cash now',fmtL(f.start),'set via ⚙','val-gold')+
+    kpi('Lowest point',fmtL(f.low.bal),f.low.bal<0?'goes negative '+f.low.date.toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'on '+f.low.date.toLocaleDateString('en-IN',{day:'numeric',month:'short'}),f.low.bal<0?'val-red':'val-green')+
+    kpi('In 60 days',fmtL(f.end),(f.end-f.start>=0?'+':'')+fmtL(f.end-f.start)+' net',f.end>=f.start?'val-green':'val-red');
+  main.appendChild(top);
+  if(f.low.bal<0){const w=el('div','card');w.style.marginTop='16px';w.style.borderColor='rgba(217,139,134,.4)';
+    w.innerHTML=`<div class="insight" style="margin:0"><div class="n" style="background:rgba(217,139,134,.18);color:var(--red)">!</div><div><h4>Tight cash ahead</h4><p>Your projected balance dips to <b class="val-red">${fmt(f.low.bal)}</b> around ${f.low.date.toLocaleDateString('en-IN',{day:'numeric',month:'short'})}. Move a due date, set aside income, or delay a large outgo before then.</p></div></div>`;
+    main.appendChild(w);}
+  const tl=el('div','card');tl.style.marginTop='16px';
+  tl.innerHTML=`<div class="sectit" style="margin:0 0 14px">Money in &amp; out</div>`+
+    (f.events.length?f.events.map(e=>`<div class="list-row"><div><div>${e.amount>0?'▲ ':'▼ '}${e.label}</div><div class="muted" style="font-size:11px">${e.date.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'})}</div></div><div style="text-align:right;white-space:nowrap"><span class="num ${e.amount>0?'val-green':'val-red'}">${e.amount>0?'+':'−'}${fmt(Math.abs(e.amount))}</span><div class="num ${e.bal<0?'val-red':'muted'}" style="font-size:11px">bal ${fmt(e.bal)}</div></div></div>`).join('')
+     :'<div class="empty">Nothing scheduled in the next 60 days. Set your income payday and add dues to see the forecast.</div>');
+  main.appendChild(tl);
   const days={};upcoming().forEach(p=>{(days[p.due]=days[p.due]||[]).push(p);});
-  const grid=el('div','card');
-  let cells='';
-  const start=today();
-  for(let i=0;i<35;i++){
-    const d=new Date(start);d.setDate(d.getDate()+i);
-    const ev=days[i]||[];const tot=sumBy(ev,e=>e.amount);
+  const grid=el('div','card');grid.style.marginTop='16px';
+  let cells='';const start=today();
+  for(let i=0;i<35;i++){const d=new Date(start);d.setDate(d.getDate()+i);const ev=days[i]||[];const tot=sumBy(ev,e=>e.amount);
     cells+=`<div style="border:1px solid var(--line);border-radius:10px;padding:8px;min-height:64px;background:${tot?'var(--gold-dim)':'transparent'}">
       <div class="muted" style="font-size:10px">${d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</div>
       ${tot?`<div class="num val-gold" style="font-size:12px;margin-top:4px">${fmt(tot)}</div>`:''}
-      ${ev.map(e=>`<div style="font-size:9.5px;color:var(--txt2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</div>`).join('')}
-    </div>`;
-  }
-  grid.innerHTML=`<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">${cells}</div>`;
+      ${ev.map(e=>`<div style="font-size:9.5px;color:var(--txt2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</div>`).join('')}</div>`;}
+  grid.innerHTML=`<div class="sectit" style="margin:0 0 14px">Outflow calendar <small>NEXT 5 WEEKS</small></div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">${cells}</div>`;
   main.appendChild(grid);
 }
 
@@ -1541,7 +1586,7 @@ function vGarage(){
   hero.innerHTML=`${car.photo?`<img class="bg" src="${car.photo}">`:''}
     <div class="meta">
       <div style="font-family:var(--serif);font-size:24px;font-weight:600">${car.name}</div>
-      <div class="muted" style="font-size:12.5px;margin:2px 0 8px">${car.model||''}${car.odo?' · '+car.odo.toLocaleString('en-IN')+' km':''}</div>
+      <div class="muted" style="font-size:12.5px;margin:2px 0 8px">${car.model||''}${car.odo?' · '+car.odo.toLocaleString('en-IN')+' km':''}${car.value?' · '+fmtL(car.value):''}</div>
       ${car.reg?`<span class="regbadge">${car.reg}</span>`:''}
     </div>`;
   main.appendChild(hero);
@@ -1583,17 +1628,19 @@ function editVehicle(id){const c=DB.cars.find(x=>x.id===id);const ins=c.insuranc
    <div class="field"><label>Name</label><input id="kn" value="${c.name||''}"></div>
    <div class="row"><div class="field"><label>Model / year</label><input id="km" value="${c.model||''}"></div><div class="field"><label>Odometer km</label><input id="ko" type="number" value="${c.odo||0}"></div></div>
    <div class="field"><label>Reg number</label><input id="kreg" value="${c.reg||''}" placeholder="KL14W1410"></div>
+   <div class="field"><label>Market value ₹ <span class="muted" style="font-weight:400">(for Net Worth)</span></label><input id="kval" type="number" value="${c.value||''}"></div>
    <div class="sectit" style="font-size:15px;margin:14px 0 8px">Insurance</div>
    <div class="row"><div class="field"><label>Provider</label><input id="kip" value="${ins.provider||''}"></div><div class="field"><label>Policy no.</label><input id="kin" value="${ins.policyNo||''}"></div></div>
    <div class="field"><label>Insurance expiry</label><input id="kie" type="date" value="${ins.expiry||''}"></div>
    <div class="field"><label>PUC expiry</label><input id="kpe" type="date" value="${puc.expiry||''}"></div>
    <button class="btn gold" style="width:100%" onclick="updVehicle('${id}')">Save</button>`);}
-function updVehicle(id){const c=DB.cars.find(x=>x.id===id);c.name=$('#kn').value||c.name;c.model=$('#km').value;c.odo=+$('#ko').value||0;c.reg=$('#kreg').value;c.insurance=Object.assign({},c.insurance,{provider:$('#kip').value,policyNo:$('#kin').value,expiry:$('#kie').value});c.puc=Object.assign({},c.puc,{expiry:$('#kpe').value});save();closeModal();render();}
+function updVehicle(id){const c=DB.cars.find(x=>x.id===id);c.name=$('#kn').value||c.name;c.model=$('#km').value;c.odo=+$('#ko').value||0;c.reg=$('#kreg').value;c.value=+$('#kval').value||0;c.insurance=Object.assign({},c.insurance,{provider:$('#kip').value,policyNo:$('#kin').value,expiry:$('#kie').value});c.puc=Object.assign({},c.puc,{expiry:$('#kpe').value});save();closeModal();render();}
 function addCar(){modal('Add vehicle',`<div class="field"><label>Name</label><input id="kn" placeholder="Mercedes A180 CDI"></div>
   <div class="row"><div class="field"><label>Model / year</label><input id="km" placeholder="W176 · 2013"></div><div class="field"><label>Odometer km</label><input id="ko" type="number"></div></div>
   <div class="field"><label>Reg number</label><input id="kreg" placeholder="KL14W1410"></div>
+  <div class="field"><label>Market value ₹ <span class="muted" style="font-weight:400">(for Net Worth)</span></label><input id="kval" type="number"></div>
   <button class="btn gold" style="width:100%" onclick="saveCar()">Save</button>`);}
-function saveCar(){DB.cars.push({id:uid(),name:$('#kn').value||'Vehicle',model:$('#km').value||'',odo:+$('#ko').value||0,reg:$('#kreg').value||'',repairs:[],docs:{},insurance:{},puc:{}});GARAGE_SEL=DB.cars.length-1;save();closeModal();render();}
+function saveCar(){DB.cars.push({id:uid(),name:$('#kn').value||'Vehicle',model:$('#km').value||'',odo:+$('#ko').value||0,reg:$('#kreg').value||'',value:+$('#kval').value||0,repairs:[],docs:{},insurance:{},puc:{}});GARAGE_SEL=DB.cars.length-1;save();closeModal();render();}
 function addRepair(carId){modal('Add repair',`<div class="field"><label>Title</label><input id="rt"></div>
   <div class="row"><div class="field"><label>Cost ₹</label><input id="rc" type="number"></div>
   <div class="field"><label>Criticality</label><select id="rk"><option value="critical">Critical</option><option value="medium">Medium</option><option value="low">Low</option></select></div></div>
@@ -1604,7 +1651,7 @@ function saveRepair(carId){const c=DB.cars.find(x=>x.id===carId);c.repairs.push(
 function vLife(){
   const main=$('#main');
   const hasExp=(DB.expenses&&DB.expenses.length);
-  main.innerHTML=header('Spending','Log expenses &amp; see where it goes',`<span class="chip gold" onclick="addExpense()" style="cursor:pointer">+ Add</span>${hasExp?` <span class="chip" onclick="clearExpenses()" style="cursor:pointer;color:var(--red);border-color:rgba(217,139,134,.35)">Clear all</span>`:''}`);
+  main.innerHTML=header('Spending','Log expenses &amp; see where it goes',`<span class="chip gold" onclick="addExpense()" style="cursor:pointer">+ Add</span> <span class="chip" onclick="setBudgets()" style="cursor:pointer">Budgets</span>${hasExp?` <span class="chip" onclick="clearExpenses()" style="cursor:pointer;color:var(--red);border-color:rgba(217,139,134,.35)">Clear all</span>`:''}`);
   const ym=new Date().toISOString().slice(0,7);
   const monthExp=(DB.expenses||[]).filter(e=>(e.date||'').slice(0,7)===ym);
   const tot=sumBy(monthExp,e=>e.amount), biz=sumBy(monthExp.filter(e=>e.scope==='business'),e=>e.amount);
@@ -1621,6 +1668,14 @@ function vLife(){
       cats.map(([k,v])=>`<div style="margin-bottom:14px"><div class="list-row" style="border:none;padding:0 0 6px"><span>${k}</span><span class="num">${fmt(v)} <span class="muted" style="font-size:11px">${tot?Math.round(v/tot*100):0}%</span></span></div><div class="bar"><span data-w="${Math.round(v/mx*100)}%" style="width:0"></span></div></div>`).join('');
   }else{cb.innerHTML='<div class="empty">No expenses logged this month — tap “+ Add expense”.</div>';}
   main.appendChild(cb);
+  const budgets=DB.plan.budgets||{};const bkeys=Object.keys(budgets).filter(k=>budgets[k]>0);
+  if(bkeys.length){
+    const bc=el('div','card');bc.style.marginTop='16px';
+    bc.innerHTML=`<div class="sectit" style="margin:0 0 14px">Budgets <small>${new Date().toLocaleDateString('en-IN',{month:'long'}).toUpperCase()}</small></div>`+
+      bkeys.map(k=>{const spent=cat[k]||0;const cap=budgets[k];const pct=Math.min(100,Math.round(spent/cap*100));const over=spent>cap;const bcls=over?'red':pct>=80?'amber':'green';
+        return `<div style="margin-bottom:14px"><div class="list-row" style="border:none;padding:0 0 6px"><span>${k}</span><span class="num ${over?'val-red':''}">${fmt(spent)} <span class="muted" style="font-size:11px">/ ${fmt(cap)}</span></span></div><div class="bar ${bcls}"><span data-w="${pct}%" style="width:0"></span></div>${over?`<div class="muted" style="font-size:11px;margin-top:4px;color:var(--red)">Over by ${fmt(spent-cap)}</div>`:''}</div>`;}).join('');
+    main.appendChild(bc);
+  }
   const recent=[...(DB.expenses||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,20);
   if(recent.length){
     const rc=el('div','card');rc.style.marginTop='16px';
@@ -1641,7 +1696,14 @@ function addExpense(){
    <div class="field"><label>Note (optional)</label><input id="exn"></div>
    <button class="btn gold" style="width:100%" onclick="saveExpense()">Add</button>`);}
 function saveExpense(){const amt=+$('#exa').value||0;if(amt<=0){toast('Enter an amount');return;}DB.expenses=DB.expenses||[];DB.expenses.push({id:uid(),amount:amt,category:$('#exc').value,method:$('#exm').value,scope:$('#exs').value,date:$('#exd').value||new Date().toISOString().slice(0,10),note:$('#exn').value||''});save();closeModal();render();toast(`Added ${fmt(amt)}`);}
-function delExpense(id){DB.expenses=DB.expenses.filter(e=>e.id!==id);save();render();}
+function _budgetCats(){return ['Food & dining','Groceries','Fuel','Transport','Shopping','Bills & utilities','Rent','Health','Education','Entertainment','Business','Family','Other'];}
+function setBudgets(){
+  const cats=_budgetCats();const b=DB.plan.budgets||{};
+  modal('Monthly budgets',`
+   <p class="muted" style="font-size:12.5px;margin-bottom:12px">Set a monthly cap per category — leave blank for no cap. You'll see progress bars and a gentle warning as you approach each one.</p>
+   ${cats.map((c,i)=>`<div class="field" style="margin:0 0 8px"><label>${c}</label><input type="number" id="bud${i}" placeholder="no cap" value="${b[c]||''}"></div>`).join('')}
+   <button class="btn gold" style="width:100%;margin-top:8px" onclick="saveBudgets()">Save budgets</button>`);}
+function saveBudgets(){const cats=_budgetCats();const b={};cats.forEach((c,i)=>{const el=document.getElementById('bud'+i);const v=el?+el.value||0:0;if(v>0)b[c]=v;});DB.plan.budgets=b;save();closeModal();render();toast('Budgets saved');}
 function clearExpenses(){modal('Clear all spending?',`
    <p class="muted" style="font-size:13px;margin-bottom:16px">This permanently deletes all <b style="color:var(--txt)">${(DB.expenses||[]).length}</b> logged expenses. This can't be undone.</p>
    <button class="btn danger" style="width:100%;margin-bottom:8px" onclick="confirmClearExpenses()">Delete all expenses</button>
@@ -1923,6 +1985,12 @@ function vZakat(){
     <div class="sub">2.5% of ${fmtL(net)} zakatable wealth${nisab?` · nisab ${fmtL(Math.round(nisab))} (87.48g gold)`:''}</div>
     ${!rate?'<div class="muted" style="font-size:11.5px;margin-top:8px">Set today\'s gold rate in the Gold screen to value holdings and compute nisab.</div>':''}`;
   main.appendChild(top);
+  if(DB.plan.zHawl){const start=new Date(DB.plan.zHawl);const dueD=new Date(start);dueD.setDate(dueD.getDate()+354);const dd=daysTo(dueD.toISOString().slice(0,10));
+    const hw=el('div','card');hw.style.marginTop='16px';
+    hw.innerHTML=`<div class="lbl">Hawl (lunar year)</div>
+      <div class="kpi sm ${dd!=null&&dd<=0?'val-gold':''}">${dd==null?'—':dd<=0?'Zakat is due':dd+' days left'}</div>
+      <div class="sub" style="margin-top:6px">Wealth crossed nisab on ${start.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})} · one lunar year completes ${dueD.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</div>`;
+    main.appendChild(hw);}
   const bd=el('div','card');bd.style.marginTop='16px';
   const row=(l,v,sub)=>`<div class="list-row"><div><div>${l}</div>${sub?`<div class="muted" style="font-size:11px">${sub}</div>`:''}</div><span class="num">${fmt(Math.round(v))}</span></div>`;
   bd.innerHTML=`<div class="sectit" style="margin:0 0 8px">What's counted</div>`+
@@ -1941,9 +2009,10 @@ function editZakat(){const p=DB.plan;modal('Zakat inputs',`
    <div class="field"><label>Cash &amp; bank savings ₹</label><input id="zc" type="number" value="${p.zCash||''}"></div>
    <div class="field"><label>Business stock &amp; cash ₹</label><input id="zb" type="number" value="${p.zBiz||''}"></div>
    <div class="field"><label>Short-term debts to subtract ₹</label><input id="zd" type="number" value="${p.zDebts||''}"></div>
-   <p class="muted" style="font-size:11.5px;margin:4px 0 12px">Gold value and receivables are pulled in automatically.</p>
+   <div class="field"><label>Hawl start — date wealth first crossed nisab</label><input id="zh" type="date" value="${p.zHawl||''}"></div>
+   <p class="muted" style="font-size:11.5px;margin:4px 0 12px">Gold value and receivables are pulled in automatically. Hawl tracks the lunar year (354 days) until Zakat is due.</p>
    <button class="btn gold" style="width:100%" onclick="saveZakat()">Save</button>`);}
-function saveZakat(){DB.plan.zCash=+$('#zc').value||0;DB.plan.zBiz=+$('#zb').value||0;DB.plan.zDebts=+$('#zd').value||0;save();closeModal();render();}
+function saveZakat(){DB.plan.zCash=+$('#zc').value||0;DB.plan.zBiz=+$('#zb').value||0;DB.plan.zDebts=+$('#zd').value||0;DB.plan.zHawl=$('#zh').value||'';save();closeModal();render();}
 
 /* ---- APP PIN LOCK ---- */
 async function sha256(s){const h=await crypto.subtle.digest('SHA-256',enc.encode(s));return b64(h);}
@@ -2158,12 +2227,33 @@ function copyTxt(t){navigator.clipboard.writeText(t).then(()=>toast('Copied'),()
 /* ============================================================
    INCOME / BUDGET EDIT
    ============================================================ */
-function editIncome(){modal('Income &amp; budget',`
-  <div class="field"><label>Monthly income ₹</label><input id="in_inc" type="number" value="${DB.income.monthly}"></div>
-  <div class="field"><label>Goal contributions / mo ₹</label><input id="in_goal" type="number" value="${DB.plan.goalContribution}"></div>
-  <div class="field"><label>Extra repayment / mo ₹</label><input id="in_rep" type="number" value="${DB.plan.extraRepayment}"></div>
-  <button class="btn gold" style="width:100%" onclick="saveIncome()">Save</button>`);}
-function saveIncome(){DB.income.monthly=+$('#in_inc').value||0;DB.plan.goalContribution=+$('#in_goal').value||0;DB.plan.extraRepayment=+$('#in_rep').value||0;save();closeModal();render();}
+let _INCSRC=null;
+function _incTotal(){return (_INCSRC||[]).reduce((s,x)=>s+(+x.amount||0),0);}
+function editIncome(){
+  _INCSRC=(DB.income.sources&&DB.income.sources.length)?DB.income.sources.map(s=>({...s})):[{id:uid(),name:'Income',amount:DB.income.monthly||0}];
+  renderIncomeModal();
+}
+function renderIncomeModal(){
+  const rows=_INCSRC.map((s,i)=>`<div class="row" style="gap:8px;align-items:flex-end">
+     <div class="field" style="flex:2;margin:0"><label>Source</label><input value="${(s.name||'').replace(/"/g,'&quot;')}" oninput="_INCSRC[${i}].name=this.value"></div>
+     <div class="field" style="flex:1;margin:0"><label>₹ / mo</label><input type="number" value="${s.amount||''}" oninput="_INCSRC[${i}].amount=+this.value||0;document.getElementById('incTot').textContent=fmt(_incTotal())"></div>
+     <button class="btn sm danger" onclick="_INCSRC.splice(${i},1);renderIncomeModal()">✕</button>
+   </div>`).join('');
+  modal('Income &amp; budget',`
+   <div style="font-size:12.5px;color:var(--txt2);margin-bottom:8px">Income sources (shop drawings, rent, salary…)</div>
+   ${rows}
+   <button class="btn sm" style="margin:6px 0 4px" onclick="_INCSRC.push({id:uid(),name:'',amount:0});renderIncomeModal()">+ Add source</button>
+   <div class="list-row" style="border-top:1px solid var(--line);margin-top:4px"><span class="muted">Total monthly income</span><span class="num val-gold"><b id="incTot">${fmt(_incTotal())}</b></span></div>
+   <div class="field" style="margin-top:12px"><label>Payday (day of month)</label><input id="in_day" type="number" min="1" max="31" value="${DB.income.day||1}"></div>
+   <div class="field"><label>Goal contributions / mo ₹</label><input id="in_goal" type="number" value="${DB.plan.goalContribution}"></div>
+   <div class="field"><label>Extra repayment / mo ₹</label><input id="in_rep" type="number" value="${DB.plan.extraRepayment}"></div>
+   <button class="btn gold" style="width:100%" onclick="saveIncome()">Save</button>`);}
+function saveIncome(){
+  const src=(_INCSRC||[]).filter(s=>(s.name||'').trim()||(+s.amount));
+  DB.income.sources=src;DB.income.monthly=_incTotal();
+  DB.income.label=src.length>1?src.length+' sources':((src[0]&&src[0].name)||'income');
+  DB.income.day=Math.min(31,Math.max(1,+$('#in_day').value||1));
+  DB.plan.goalContribution=+$('#in_goal').value||0;DB.plan.extraRepayment=+$('#in_rep').value||0;save();closeModal();render();}
 
 /* ============================================================
    MODAL / NAV / BACKUP / PWA
@@ -2184,18 +2274,33 @@ function toggleNav(forceClose){const s=$('#side'),sc=$('#scrim');const open=forc
 
 /* backup / restore (vault stays encrypted inside DB.vaultEnc) */
 $('#lockBtn').addEventListener('click',appLockSettings);
-$('#backupBtn').addEventListener('click',()=>{
+$('#backupBtn').addEventListener('click',openBackup);
+function openBackup(){
+  const lb=DB.meta&&DB.meta.lastBackup;const bkDays=lb?-daysTo(lb.slice(0,10)):null;
+  const freq=DB.meta&&DB.meta.autoBackup||'off';
   modal('Backup &amp; Restore',`
-    <p class="muted" style="font-size:13px;margin-bottom:16px">Your data lives only in this browser. Export a JSON backup to move devices — the vault stays AES-encrypted inside it.</p>
-    <button class="btn gold" style="width:100%;margin-bottom:10px" onclick="doBackup()">⤓ Download backup (JSON)</button>
+    <p class="muted" style="font-size:13px;margin-bottom:14px">Your data lives only in this browser. A JSON backup keeps it safe — the vault stays AES-encrypted inside it. ${lb?`Last backup ${bkDays===0?'today':bkDays+' day'+(bkDays===1?'':'s')+' ago'}.`:'You haven\'t backed up yet.'}</p>
+    <button class="btn gold" style="width:100%;margin-bottom:10px" onclick="doBackup()">⤓ Back up now</button>
+    <div class="field"><label>Auto-backup reminder &amp; export</label><select id="bkFreq" onchange="setAutoBackup(this.value)">
+      <option value="off" ${freq==='off'?'selected':''}>Off</option>
+      <option value="weekly" ${freq==='weekly'?'selected':''}>Weekly</option>
+      <option value="daily" ${freq==='daily'?'selected':''}>Daily</option></select></div>
+    <p class="muted" style="font-size:11.5px;margin:2px 0 12px">When due, Atlas auto-downloads a backup file on open. On Android, keep your <b>Downloads</b> folder syncing to Google Drive (Drive app → Backup) and the copy lands in the cloud automatically.</p>
     <button class="btn" style="width:100%" onclick="document.getElementById('fileIn').click()">⤒ Restore from file</button>`);
-});
-function doBackup(){
+}
+function setAutoBackup(v){DB.meta=DB.meta||{};DB.meta.autoBackup=v;save();toast(v==='off'?'Auto-backup off':'Auto-backup: '+v);}
+function doBackup(silent){
   const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='atlas-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();
   DB.meta=DB.meta||{};DB.meta.lastBackup=new Date().toISOString();save();
-  closeModal();toast('Backup downloaded');
+  if(!silent){closeModal();toast('Backup downloaded');}else{toast('Auto-backup saved to Downloads');}
+}
+function maybeAutoBackup(){
+  const freq=DB.meta&&DB.meta.autoBackup;if(!freq||freq==='off')return;
+  const lb=DB.meta.lastBackup;const days=lb?-daysTo(lb.slice(0,10)):999;
+  const due=freq==='daily'?days>=1:days>=7;
+  if(due)setTimeout(()=>doBackup(true),1500);
 }
 $('#fileIn').addEventListener('change',e=>{
   const f=e.target.files[0];if(!f)return;const r=new FileReader();
@@ -2204,7 +2309,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.14.0';
+const APP_VERSION='1.15.0';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
@@ -2224,6 +2329,18 @@ document.addEventListener('contextmenu',function(e){if(!e.target.closest('input,
 function snapshotNW(){const ym=new Date().toISOString().slice(0,7);const v=metrics().networth;DB.nwHistory=DB.nwHistory||[];const ex=DB.nwHistory.find(s=>s.ym===ym);if(ex)ex.value=v;else DB.nwHistory.push({ym,value:v});DB.nwHistory=DB.nwHistory.slice(-24);save();}
 function nudges(){
   const m=metrics();const out=[];
+  // cash-flow danger
+  try{const f=forecast(60);if(f.low.bal<0)out.push(`Cash dips to ${fmt(f.low.bal)} around ${f.low.date.toLocaleDateString('en-IN',{day:'numeric',month:'short'})} — plan ahead in Cash-Flow.`);}catch(e){}
+  // card bill due soon
+  const dueCard=DB.cards.map(c=>{const b=currentBill(c);return b&&billOut(b)>0?{name:c.name,d:daysTo(b.due),amt:billOut(b)}:null;}).filter(Boolean).filter(x=>x.d!=null&&x.d<=5).sort((a,b)=>a.d-b.d)[0];
+  if(dueCard)out.push(`${dueCard.name} bill ${fmt(dueCard.amt)} due ${dueCard.d<0?Math.abs(dueCard.d)+'d ago':dueCard.d===0?'today':'in '+dueCard.d+'d'}.`);
+  // renewal expiring
+  const ren=(DB.renewals||[]).map(r=>({name:r.name,d:r.expiry?daysTo(r.expiry):null})).filter(r=>r.d!=null&&r.d<=14&&r.d>=0).sort((a,b)=>a.d-b.d)[0];
+  if(ren)out.push(`${ren.name} renews in ${ren.d}d — check Renewals.`);
+  // budget overspend
+  const ym=new Date().toISOString().slice(0,7);const mc={};(DB.expenses||[]).filter(e=>(e.date||'').slice(0,7)===ym).forEach(e=>{const k=e.category||'Other';mc[k]=(mc[k]||0)+e.amount;});
+  const bud=DB.plan.budgets||{};const over=Object.keys(bud).find(k=>bud[k]>0&&(mc[k]||0)>bud[k]);
+  if(over)out.push(`You're over your ${over} budget this month (${fmt(mc[over])} of ${fmt(bud[over])}).`);
   if(m.income>0&&m.subOut/m.income>0.1)out.push(`Subscriptions are ${Math.round(m.subOut/m.income*100)}% of your income — worth a prune.`);
   if(m.util>50)out.push(`Card utilisation is ${m.util}% — staying under 30% protects your CIBIL score.`);
   const owed=(DB.people||[]).filter(p=>pOwesMe(p)>0);
@@ -2239,6 +2356,7 @@ render();
 if(DB.meta.lastSeenVersion==null){DB.meta.lastSeenVersion=APP_VERSION;save();}
 else if(cmpVer(APP_VERSION,DB.meta.lastSeenVersion)>0){DB.meta.lastSeenVersion=APP_VERSION;save();setTimeout(()=>showWhatsNew(false),500);}
 if(DB.meta.pinHash){let u=false;try{u=sessionStorage.getItem('atlasUnlocked')==='1';}catch(e){}if(u)APP_UNLOCKED=true;else showAppLock();}
+maybeAutoBackup();
 </script>
 </body>
 </html>
