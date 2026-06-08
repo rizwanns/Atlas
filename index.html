@@ -106,6 +106,10 @@ tr:last-child td{border-bottom:none}
 .bar>span{display:block;height:100%;border-radius:8px;background:linear-gradient(90deg,var(--gold),var(--gold2));transition:width .5s}
 .bar.green>span{background:linear-gradient(90deg,#4d8c6d,var(--green))}
 .bar.red>span{background:linear-gradient(90deg,#b56560,var(--red))}
+.bar.amber>span{background:linear-gradient(90deg,#b8923f,var(--amber))}
+.cardgrid{grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
+.card .lbl{align-items:flex-start;gap:8px;line-height:1.5}
+.card .lbl .pill{flex:0 0 auto;margin-top:1px}
 .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);padding:5px;border-radius:13px;width:fit-content}
 .tabs button{border:none;background:transparent;color:var(--txt2);padding:8px 16px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)}
 .tabs button.on{background:var(--gold-dim);color:var(--gold2)}
@@ -786,15 +790,16 @@ function vCards(){
   const main=$('#main');const m=M();
   main.innerHTML=header('Credit Cards &amp; EMIs','CIBIL utilisation guardrail',`<span class="chip gold" onclick="addCard()" style="cursor:pointer">+ Add card</span>`);
   const guard=el('div','card');
-  const cls=m.util<=30?'green':m.util<=50?'':'red';
-  guard.innerHTML=`<div class="lbl">Overall Utilisation <span class="pill ${m.util<=30?'ok':m.util<=50?'warn':'crit'}">${m.util<=30?'Safe':m.util<=50?'Watch':'High'}</span></div>
-    <div class="kpi sm ${m.util<=30?'val-green':'val-red'}">${m.util}%</div>
+  const cls=m.util<=30?'green':m.util<=60?'amber':'red';
+  guard.innerHTML=`<div class="lbl">Overall Utilisation <span class="pill ${m.util<=30?'ok':m.util<=60?'warn':'crit'}">${m.util<=30?'Safe':m.util<=60?'Watch':'High'}</span></div>
+    <div class="kpi sm ${m.util<=30?'val-green':m.util<=60?'val-gold':'val-red'}">${m.util}%</div>
     <div class="bar ${cls}"><span data-w="${Math.min(100,m.util)}%" style="width:0"></span></div>
     <div class="sub" style="margin-top:10px">${fmt(m.cardTotal)} used of ${fmt(m.cardLimit)} · CIBIL prefers under 30% (${fmt(Math.round(m.cardLimit*0.3))})</div>`;
   main.appendChild(guard);
 
-  const g=el('div','grid g3');g.style.marginTop='16px';
+  const g=el('div','grid cardgrid');g.style.marginTop='16px';
   g.innerHTML=DB.cards.map(c=>{const u=c.limit?Math.round(c.balance/c.limit*100):0;
+    const ucls=u<=30?'green':u<=60?'amber':'red';const utxt=u<=30?'val-green':u<=60?'val-gold':'val-red';
     const bills=c.bills||[];const unpaid=bills.filter(b=>!b.paid);
     const nextDue=unpaid.map(b=>b.due).sort()[0];
     const cyc=`Bill ${c.statementDay?'day '+c.statementDay:'—'} · Due ${c.dueDay?'day '+c.dueDay:'—'}`;
@@ -802,8 +807,8 @@ function vCards(){
     <div class="lbl">${c.name} <span class="pill ${c.scope==='business'?'biz':'per'}">${c.scope}</span></div>
     <div class="muted" style="font-size:12px;margin-top:4px">${[c.bank,c.last4?'•••• '+c.last4:'',c.network].filter(Boolean).join(' · ')||'—'}</div>
     <div class="kpi sm">${fmt(c.balance)}</div>
-    <div class="bar ${u<=30?'green':u<=50?'':'red'}"><span data-w="${Math.min(100,u)}%" style="width:0"></span></div>
-    <div class="sub" style="margin-top:8px">${u}% of ${fmt(c.limit)}</div>
+    <div class="bar ${ucls}"><span data-w="${Math.min(100,u)}%" style="width:0"></span></div>
+    <div class="sub" style="margin-top:8px"><span class="${utxt}">${u}%</span> of ${fmt(c.limit)}</div>
     <div class="muted" style="font-size:11.5px;margin-top:8px">${cyc}${unpaid.length?` · <span class="val-red">${unpaid.length} bill${unpaid.length>1?'s':''} due ${fmt(sumBy(unpaid,b=>b.amount))}</span>`:''}</div>
     ${nextDue?`<div class="muted" style="font-size:11.5px">Next due ${new Date(nextDue).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</div>`:''}
     <div style="margin-top:12px"><button class="btn sm gold" onclick="cardBills('${c.id}')">Bills</button> <button class="btn sm" onclick="editCard('${c.id}')">Edit</button> <button class="btn sm danger" onclick="delCard('${c.id}')">✕</button></div>
@@ -1212,6 +1217,7 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.11.0',notes:['Fingerprint / Face unlock — enable it under App Lock (your PIN stays as backup).','Spending now has a one-tap “Clear all” with confirmation.','Statement import is paused for now while we rethink it — it was misreading PDF files.','Credit-card bars are colour-coded by utilisation: green when low, amber mid, red when high.','Cleaner card layout that fits properly on phone, tablet and desktop.']},
  {v:'1.10.0',notes:['Statements — a combined ledger per person that nets money you borrowed from them against money you lent them (open it from any debt or “Owed to Me” entry).','Chits — track a monthly chit (amount, date, tenure) and mark it claimed when you receive the payout; it shows in Coming Up and your monthly outgo.','Loan payments are now logged with dates, so your statements build a full history going forward.']},
  {v:'1.9.0',notes:['Renewals vault — track insurance, AMCs, domains and warranties with expiry alerts.','Compliance calendar — GST (GSTR-1/3B), advance-tax and ITR due dates with countdowns.','Zakat calculator — 2.5% estimate across cash, gold, receivables and business assets, against nisab.','App Lock — set a PIN to lock the whole app on open (your vaults stay separately encrypted).']},
  {v:'1.8.0',notes:['Safety Net — emergency-fund runway (how many months you could cover) plus sinking funds for lumpy bills like insurance, festivals and advance tax.','Gold tracker — log grams, purity and what you paid; set today\'s rate to see live value and gain/loss.','Business vs Personal report — your debts, obligations and spending split side by side for GST/ITR.','Import a CSV bank/card statement straight into Spending — read on-device only, nothing uploaded.']},
@@ -1359,7 +1365,8 @@ function saveRepair(carId){const c=DB.cars.find(x=>x.id===carId);c.repairs.push(
 /* ---- LIFESTYLE ---- */
 function vLife(){
   const main=$('#main');
-  main.innerHTML=header('Spending','Log expenses &amp; see where it goes',`<span class="chip gold" onclick="addExpense()" style="cursor:pointer">+ Add</span> <span class="chip" onclick="openCsvImport()" style="cursor:pointer">⤓ Import CSV</span>`);
+  const hasExp=(DB.expenses&&DB.expenses.length);
+  main.innerHTML=header('Spending','Log expenses &amp; see where it goes',`<span class="chip gold" onclick="addExpense()" style="cursor:pointer">+ Add</span>${hasExp?` <span class="chip" onclick="clearExpenses()" style="cursor:pointer;color:var(--red);border-color:rgba(217,139,134,.35)">Clear all</span>`:''}`);
   const ym=new Date().toISOString().slice(0,7);
   const monthExp=(DB.expenses||[]).filter(e=>(e.date||'').slice(0,7)===ym);
   const tot=sumBy(monthExp,e=>e.amount), biz=sumBy(monthExp.filter(e=>e.scope==='business'),e=>e.amount);
@@ -1397,6 +1404,11 @@ function addExpense(){
    <button class="btn gold" style="width:100%" onclick="saveExpense()">Add</button>`);}
 function saveExpense(){const amt=+$('#exa').value||0;if(amt<=0){toast('Enter an amount');return;}DB.expenses=DB.expenses||[];DB.expenses.push({id:uid(),amount:amt,category:$('#exc').value,method:$('#exm').value,scope:$('#exs').value,date:$('#exd').value||new Date().toISOString().slice(0,10),note:$('#exn').value||''});save();closeModal();render();toast(`Added ${fmt(amt)}`);}
 function delExpense(id){DB.expenses=DB.expenses.filter(e=>e.id!==id);save();render();}
+function clearExpenses(){modal('Clear all spending?',`
+   <p class="muted" style="font-size:13px;margin-bottom:16px">This permanently deletes all <b style="color:var(--txt)">${(DB.expenses||[]).length}</b> logged expenses. This can't be undone.</p>
+   <button class="btn danger" style="width:100%;margin-bottom:8px" onclick="confirmClearExpenses()">Delete all expenses</button>
+   <button class="btn" style="width:100%" onclick="closeModal()">Cancel</button>`);}
+function confirmClearExpenses(){DB.expenses=[];save();closeModal();render();toast('All spending cleared');}
 
 /* ---- CSV IMPORT (reads on-device, nothing uploaded) ---- */
 function parseCSV(text){
@@ -1697,35 +1709,67 @@ function saveZakat(){DB.plan.zCash=+$('#zc').value||0;DB.plan.zBiz=+$('#zb').val
 
 /* ---- APP PIN LOCK ---- */
 async function sha256(s){const h=await crypto.subtle.digest('SHA-256',enc.encode(s));return b64(h);}
+const bioSupported=()=>!!(window.PublicKeyCredential&&navigator.credentials);
+async function bioRegister(){
+  if(!bioSupported()){toast('Fingerprint not supported on this device');return;}
+  try{
+    const cred=await navigator.credentials.create({publicKey:{
+      challenge:crypto.getRandomValues(new Uint8Array(32)),
+      rp:{name:'Atlas'},
+      user:{id:crypto.getRandomValues(new Uint8Array(16)),name:'atlas',displayName:'Atlas'},
+      pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+      authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required'},
+      timeout:60000,attestation:'none'
+    }});
+    DB.meta.bioCredId=b64(cred.rawId);save();closeModal();toast('Fingerprint unlock enabled');
+  }catch(e){toast('Could not enable fingerprint');}
+}
+async function bioUnlock(){
+  if(!DB.meta.bioCredId||!bioSupported())return false;
+  try{
+    await navigator.credentials.get({publicKey:{
+      challenge:crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials:[{type:'public-key',id:unb64(DB.meta.bioCredId)}],
+      userVerification:'required',timeout:60000
+    }});
+    return true;
+  }catch(e){return false;}
+}
+async function tryBio(){const ok=await bioUnlock();if(ok){APP_UNLOCKED=true;const d=$('#applock');if(d)d.remove();}else{const e=$('#pinErr');if(e)e.textContent='Fingerprint failed — use PIN';}}
 let APP_UNLOCKED=false;
 function showAppLock(){
   if($('#applock'))return;
   const d=document.createElement('div');d.id='applock';
   d.style.cssText='position:fixed;inset:0;z-index:100000;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px';
+  const bio=DB.meta.bioCredId&&bioSupported();
   d.innerHTML=`<div class="card" style="max-width:340px;width:100%;text-align:center">
     <div style="font-size:42px;margin-bottom:10px">⚷</div>
     <h3 style="font-family:var(--serif);font-size:24px">Atlas locked</h3>
-    <p class="muted" style="margin:6px 0 18px;font-size:13px">Enter your PIN to continue.</p>
+    <p class="muted" style="margin:6px 0 18px;font-size:13px">${bio?'Use fingerprint, or enter your PIN.':'Enter your PIN to continue.'}</p>
+    ${bio?`<button class="btn gold" style="width:100%;margin-bottom:12px" onclick="tryBio()">☝ Unlock with fingerprint</button>`:''}
     <input id="pinIn" type="password" inputmode="numeric" placeholder="••••" style="text-align:center;letter-spacing:8px" onkeydown="if(event.key==='Enter')tryPin()">
-    <button class="btn gold" style="width:100%;margin-top:14px" onclick="tryPin()">Unlock</button>
+    <button class="btn ${bio?'':'gold'}" style="width:100%;margin-top:12px" onclick="tryPin()">Unlock with PIN</button>
     <p id="pinErr" style="font-size:11.5px;margin-top:12px;color:var(--red);min-height:14px"></p>
   </div>`;
   document.body.appendChild(d);
-  setTimeout(()=>{const i=$('#pinIn');if(i)i.focus();},100);
+  if(!bio)setTimeout(()=>{const i=$('#pinIn');if(i)i.focus();},100);
 }
 async function tryPin(){const v=$('#pinIn').value||'';const h=await sha256(v);if(h===DB.meta.pinHash){APP_UNLOCKED=true;const d=$('#applock');if(d)d.remove();}else{$('#pinErr').textContent='Wrong PIN';$('#pinIn').value='';}}
 function appLockSettings(){
   const has=!!(DB.meta&&DB.meta.pinHash);
+  const bioOn=!!(DB.meta&&DB.meta.bioCredId);
   modal('App Lock',`
    <p class="muted" style="font-size:12.5px;margin-bottom:14px">${has?'A PIN is set — Atlas asks for it each time you open the app.':'Set a numeric PIN to lock the whole app on open. This is a privacy lock, not full encryption — your Card &amp; Login vaults stay separately AES-encrypted.'}</p>
    ${has?`<div class="field"><label>Current PIN</label><input id="pinCur" type="password" inputmode="numeric"></div>`:''}
    <div class="field"><label>${has?'New PIN':'PIN'} (4–8 digits${has?', blank to remove':''})</label><input id="pinNew" type="password" inputmode="numeric"></div>
-   <button class="btn gold" style="width:100%" onclick="savePin(${has})">Save</button>`);
+   <button class="btn gold" style="width:100%" onclick="savePin(${has})">Save PIN</button>
+   ${has&&bioSupported()?`<div style="border-top:1px solid var(--line);margin:16px 0 0;padding-top:16px">${bioOn?`<p class="muted" style="font-size:12.5px;margin-bottom:10px">Fingerprint unlock is on.</p><button class="btn danger" style="width:100%" onclick="bioDisable()">Turn off fingerprint</button>`:`<p class="muted" style="font-size:12.5px;margin-bottom:10px">Use your device fingerprint/Face to unlock (PIN still works as backup).</p><button class="btn" style="width:100%" onclick="bioRegister()">☝ Enable fingerprint unlock</button>`}</div>`:has?'':''}`);
 }
+function bioDisable(){DB.meta.bioCredId=null;save();closeModal();toast('Fingerprint unlock off');}
 async function savePin(has){
   if(has){const cur=await sha256($('#pinCur').value||'');if(cur!==DB.meta.pinHash){toast('Current PIN is wrong');return;}}
   const np=($('#pinNew').value||'').trim();
-  if(!np){if(has){DB.meta.pinHash=null;save();closeModal();toast('App lock removed');}else closeModal();return;}
+  if(!np){if(has){DB.meta.pinHash=null;DB.meta.bioCredId=null;save();closeModal();toast('App lock removed');}else closeModal();return;}
   if(!/^\d{4,8}$/.test(np)){toast('Use 4–8 digits');return;}
   DB.meta.pinHash=await sha256(np);save();closeModal();toast('App lock set');
 }
@@ -1886,7 +1930,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.10.2';
+const APP_VERSION='1.11.0';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
