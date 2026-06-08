@@ -53,7 +53,7 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;o
 .nav a:hover{background:var(--card);color:var(--txt)}
 .nav a.on{background:var(--gold-dim);color:var(--gold2);border-color:rgba(201,168,106,.25)}
 .nav .sep{font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;padding:16px 12px 6px;font-weight:600}
-.main{padding:34px 40px 80px;max-width:1180px;width:100%}
+.main{padding:34px 40px 80px;max-width:1180px;width:100%;margin:0 auto}
 .topbar{display:none}
 
 .head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:26px;flex-wrap:wrap}
@@ -99,6 +99,7 @@ table{width:100%;border-collapse:collapse}
 th{text-align:left;font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600;padding:0 0 12px;border-bottom:1px solid var(--line)}
 td{padding:14px 0;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:middle}
 tr:last-child td{border-bottom:none}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 .num{font-family:var(--mono);font-weight:500}
 .muted{color:var(--muted)}
 .bar{height:8px;border-radius:8px;background:var(--card2);overflow:hidden}
@@ -162,11 +163,29 @@ section.on{display:block}
   .topbar .logo{width:34px;height:34px;font-size:20px}
   .topbar b{font-family:var(--serif);font-size:18px}
   .burger{font-size:22px;cursor:pointer;color:var(--gold2);background:none;border:none}
-  .main{padding:20px 18px 80px}
-  .head h1{font-size:27px}
-  .g4,.g3,.g2{grid-template-columns:1fr}
+  .main{padding:20px 16px 90px}
+  .head{margin-bottom:20px}
+  .head h1{font-size:25px}
+  .g4{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(2,1fr)}
+  .g2{grid-template-columns:1fr}
+  .card{padding:16px;border-radius:18px}
+  .kpi{font-size:23px;margin:10px 0 5px}
+  .kpi.sm{font-size:19px}
+  .sectit{font-size:19px;margin:24px 0 14px}
+  .tscroll th,.tscroll td{white-space:nowrap}
+  .tscroll th:not(:last-child),.tscroll td:not(:last-child){padding-right:18px}
+  td{padding:12px 0}
   .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:45;display:none}
   .scrim.on{display:block}
+}
+@media(max-width:430px){
+  .main{padding:16px 12px 90px}
+  .head h1{font-size:23px}
+  .kpi{font-size:21px}
+  .kpi.sm{font-size:18px}
+  .card{padding:14px}
+  .btn.sm{padding:6px 9px;font-size:11px}
 }
 </style>
 </head>
@@ -191,6 +210,7 @@ section.on{display:block}
       <div class="sep">Debt</div>
       <a data-v="debts"><span class="ic">⚖</span> Debts &amp; Loans</a>
       <a data-v="owed"><span class="ic">⇄</span> Owed to Me</a>
+      <a data-v="statements"><span class="ic">≡</span> Statements</a>
       <a data-v="repay"><span class="ic">↻</span> Repayment Plan</a>
       <a data-v="cards"><span class="ic">▭</span> Cards &amp; EMIs</a>
       <a data-v="subs"><span class="ic">∞</span> Subscriptions</a>
@@ -198,6 +218,7 @@ section.on{display:block}
       <a data-v="networth"><span class="ic">▲</span> Net Worth</a>
       <a data-v="safety"><span class="ic">⛨</span> Safety Net</a>
       <a data-v="gold"><span class="ic">❖</span> Gold</a>
+      <a data-v="chits"><span class="ic">⊜</span> Chits</a>
       <a data-v="goals"><span class="ic">◎</span> Goals</a>
       <a data-v="bizrep"><span class="ic">≋</span> Biz vs Personal</a>
       <a data-v="compliance"><span class="ic">▤</span> Compliance</a>
@@ -264,6 +285,7 @@ function seed(){
     nwHistory:[],
     sinking:[],
     gold:[],
+    chits:[],
     renewals:[],
     receivables:[],
     meta:{lastSeenVersion:null},
@@ -278,6 +300,7 @@ if(!DB.expenses)DB.expenses=[];
 if(!DB.nwHistory)DB.nwHistory=[];
 if(!DB.sinking)DB.sinking=[];
 if(!DB.gold)DB.gold=[];
+if(!DB.chits)DB.chits=[];
 if(!DB.renewals)DB.renewals=[];
 if(!DB.meta)DB.meta={lastSeenVersion:'1.5.0'};
 function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(DB));return true;}catch(e){return false;}}
@@ -290,7 +313,8 @@ function metrics(){
   const liabilities=loanTotal+cardTotal;
   const emiOut=sumBy(DB.emis,e=>e.amount);
   const subOut=sumBy(DB.subs,s=>s.amount);
-  const outflow=emiOut+subOut;
+  const chitOut=sumBy((DB.chits||[]).filter(c=>!chitDone(c)),c=>c.monthly);
+  const outflow=emiOut+subOut+chitOut;
   const income=DB.income.monthly;
   const goals=DB.plan.goalContribution;
   const repay=DB.plan.extraRepayment;
@@ -431,9 +455,11 @@ const M=()=>metrics();
 function render(){
   const view=document.body.dataset.view||'overview';
   $('#main').innerHTML='';
-  ({home:vHome,overview:vOverview,advisor:vAdvisor,debts:vDebts,owed:vOwed,repay:vRepay,cards:vCards,subs:vSubs,
-    networth:vNet,safety:vSafety,gold:vGold,bizrep:vBizRep,compliance:vComp,zakat:vZakat,renewals:vRenew,goals:vGoals,calendar:vCal,vacation:vVac,garage:vGarage,lifestyle:vLife,
+  ({home:vHome,overview:vOverview,advisor:vAdvisor,debts:vDebts,owed:vOwed,statements:vStatements,statement:vStatement,repay:vRepay,cards:vCards,subs:vSubs,
+    networth:vNet,safety:vSafety,gold:vGold,chits:vChits,bizrep:vBizRep,compliance:vComp,zakat:vZakat,renewals:vRenew,goals:vGoals,calendar:vCal,vacation:vVac,garage:vGarage,lifestyle:vLife,
     cardvault:vCardVault,loginvault:vLoginVault}[view]||vHome)();
+  // keep wide tables contained (horizontal scroll within their card, never the page)
+  $('#main').querySelectorAll('table').forEach(t=>{const p=t.parentElement;if(p&&!p.classList.contains('tscroll')){const w=document.createElement('div');w.className='tscroll';p.insertBefore(w,t);w.appendChild(t);}});
   // animate bars
   setTimeout(()=>document.querySelectorAll('.bar>span[data-w]').forEach(s=>s.style.width=s.dataset.w),30);
 }
@@ -593,7 +619,8 @@ function subDate(s){
 function subDays(s){const d=subDate(s);return d!=null?daysUntil(d):30;}
 function upcoming(){
   const a=[...DB.subs.map(s=>({name:s.name,amount:s.amount,due:subDays(s),date:subDate(s),card:s.card,kind:'Subscription'})),
-           ...DB.emis.map(e=>{const dd=e.due!=null?e.due:5;return {name:e.name,amount:e.amount,due:dd,card:e.card,kind:'EMI'};})];
+           ...DB.emis.map(e=>{const dd=e.due!=null?e.due:5;return {name:e.name,amount:e.amount,due:dd,card:e.card,kind:'EMI'};}),
+           ...(DB.chits||[]).filter(c=>!chitDone(c)).map(c=>({name:c.name,amount:c.monthly,due:daysUntil(chitNext(c)),card:'',kind:'Chit'}))];
   return a.sort((x,y)=>x.due-y.due);
 }
 
@@ -664,7 +691,7 @@ function vDebts(){
       <td class="num ${l.rate>=12?'val-red':''}">${l.rate}%</td>
       <td class="num">${fmt(l.balance)}</td>
       <td class="muted" style="font-size:12px">${l.lastPaid?new Date(l.lastPaid).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—'}</td>
-      <td style="text-align:right"><button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button> <button class="btn sm danger" onclick="delLoan('${l.id}')">✕</button></td>
+      <td style="text-align:right"><button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button> <button class="btn sm" onclick="stmtFromLoan('${l.id}')">Statement</button> <button class="btn sm danger" onclick="delLoan('${l.id}')">✕</button></td>
    </tr>`).join('')}
    </tbody></table>
    <div class="muted" style="font-size:12px;margin-top:12px">Tap <b>Record payment</b> on any debt to enter what you paid — it's subtracted from that balance. For friends &amp; family, paying also moves them to the back of the queue so everyone gets paid in turn.</div>`;
@@ -681,13 +708,16 @@ function payLoan(id){
   modal('Record payment',`
     <p class="muted" style="font-size:13px;margin-bottom:12px">${l.name} — current balance <b class="num" style="color:var(--txt)">${fmt(l.balance)}</b></p>
     <div class="field"><label>Amount paid ₹</label><input id="payamt" type="number" inputmode="numeric" placeholder="e.g. 5000"></div>
+    <div class="field"><label>Date</label><input id="paydate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
     <button class="btn gold" style="width:100%" onclick="confirmPay('${id}')">Subtract from balance</button>`);
 }
 function confirmPay(id){
   const l=DB.loans.find(x=>x.id===id);const amt=+$('#payamt').value||0;
   if(amt<=0){toast('Enter an amount');return;}
+  const d=$('#paydate')?($('#paydate').value||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10);
   l.balance=Math.max(0,l.balance-amt);
-  l.lastPaid=new Date().toISOString().slice(0,10);
+  l.payments=l.payments||[];l.payments.push({id:uid(),amount:amt,date:d});
+  l.lastPaid=d;
   save();closeModal();render();
   toast(fmt(amt)+' paid · balance now '+fmt(l.balance));
 }
@@ -703,8 +733,8 @@ function addLoan(){
     <button class="btn gold" style="width:100%" onclick="saveLoan()">Save</button>`);
 }
 function saveLoan(){
-  const rel=$('#lf').value==='yes';
-  DB.loans.push({id:uid(),name:$('#ln').value||'Loan',lender:$('#ll').value||'',scope:$('#ls').value,rate:+$('#lr').value||0,balance:+$('#lb').value||0,emi:0,relationship:rel,lastPaid:new Date().toISOString().slice(0,10)});
+  const rel=$('#lf').value==='yes';const bal=+$('#lb').value||0;
+  DB.loans.push({id:uid(),name:$('#ln').value||'Loan',lender:$('#ll').value||'',scope:$('#ls').value,rate:+$('#lr').value||0,balance:bal,original:bal,emi:0,relationship:rel,start:new Date().toISOString().slice(0,10),payments:[],lastPaid:new Date().toISOString().slice(0,10)});
   save();closeModal();render();
 }
 
@@ -1031,16 +1061,17 @@ function vOwed(){
       <div class="bar green"><span data-w="${pct}%" style="width:0"></span></div>
       <div class="sub" style="margin-top:8px">${fmt(paid)} of ${fmt(r.principal)} repaid${r.note?' · '+r.note:''}</div>
       ${recent.length?`<div style="margin-top:8px">${recent.map(p=>`<div class="list-row" style="padding:8px 0"><span class="muted" style="font-size:12px">${new Date(p.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'2-digit'})}</span><span class="num" style="font-size:13px">${fmt(p.amount)} <button class="btn sm danger" onclick="rmRecv('${r.id}','${p.id}')">✕</button></span></div>`).join('')}</div>`:''}
-      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm gold" onclick="recordRecv('${r.id}')">+ Record payment</button><button class="btn sm" onclick="editOwed('${r.id}')">Edit</button><button class="btn sm danger" onclick="delOwed('${r.id}')">Delete</button></div>`;
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm gold" onclick="recordRecv('${r.id}')">+ Record payment</button><button class="btn sm" onclick="stmtFromRecv('${r.id}')">Statement</button><button class="btn sm" onclick="editOwed('${r.id}')">Edit</button><button class="btn sm danger" onclick="delOwed('${r.id}')">Delete</button></div>`;
     main.appendChild(c);
   });
 }
 function addOwed(){modal('Add who owes you',`
   <div class="field"><label>Person / party</label><input id="own" placeholder="Name"></div>
   <div class="field"><label>Amount they owe ₹</label><input id="owp" type="number"></div>
+  <div class="field"><label>Date lent</label><input id="owd" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
   <div class="field"><label>Note (optional)</label><input id="ownt" placeholder="what it was for"></div>
   <button class="btn gold" style="width:100%" onclick="saveOwed()">Save</button>`);}
-function saveOwed(){DB.receivables.push({id:uid(),person:$('#own').value||'Someone',principal:+$('#owp').value||0,note:$('#ownt').value||'',payments:[]});save();closeModal();render();}
+function saveOwed(){DB.receivables.push({id:uid(),person:$('#own').value||'Someone',principal:+$('#owp').value||0,date:$('#owd').value||new Date().toISOString().slice(0,10),note:$('#ownt').value||'',payments:[]});save();closeModal();render();}
 function editOwed(id){const r=DB.receivables.find(x=>x.id===id);modal('Edit entry',`
   <div class="field"><label>Person / party</label><input id="own" value="${r.person||''}"></div>
   <div class="field"><label>Amount they owe ₹</label><input id="owp" type="number" value="${r.principal||0}"></div>
@@ -1056,8 +1087,132 @@ function recordRecv(id){const r=DB.receivables.find(x=>x.id===id);modal('Record 
 function saveRecv(id){const r=DB.receivables.find(x=>x.id===id);const amt=+$('#rva').value||0;if(amt<=0){toast('Enter an amount');return;}r.payments=r.payments||[];r.payments.push({id:uid(),date:$('#rvd').value||new Date().toISOString().slice(0,10),amount:amt});save();closeModal();render();toast(`Recorded ${fmt(amt)}`);}
 function rmRecv(rid,pid){const r=DB.receivables.find(x=>x.id===rid);r.payments=(r.payments||[]).filter(p=>p.id!==pid);save();render();}
 
+/* ---- PER-PERSON STATEMENTS (loans + receivables) ---- */
+let STMT_PERSON='';
+function normName(s){return (s||'').trim().toLowerCase();}
+function loanParty(l){return (l.lender||l.name||'').trim();}
+function counterparties(){
+  const map={};
+  (DB.loans||[]).forEach(l=>{const n=loanParty(l);if(n)map[normName(n)]=map[normName(n)]||n;});
+  (DB.receivables||[]).forEach(r=>{const n=(r.person||'').trim();if(n)map[normName(n)]=map[normName(n)]||n;});
+  return Object.values(map).sort((a,b)=>a.localeCompare(b));
+}
+function personStatement(name){
+  const key=normName(name);
+  const loans=(DB.loans||[]).filter(l=>normName(loanParty(l))===key);
+  const recvs=(DB.receivables||[]).filter(r=>normName(r.person)===key);
+  const iOwe=sumBy(loans,l=>l.balance);
+  const theyOwe=sumBy(recvs,r=>recvOut(r));
+  const txns=[];
+  loans.forEach(l=>{
+    txns.push({date:l.start||'',label:`You borrowed${l.name&&l.name!==name?' · '+l.name:''}`,tag:'owe',amount:(l.original!=null?l.original:l.balance)});
+    (l.payments||[]).forEach(p=>txns.push({date:p.date||'',label:'You repaid them',tag:'owepay',amount:p.amount}));
+  });
+  recvs.forEach(r=>{
+    txns.push({date:r.date||'',label:`You lent${r.note?' · '+r.note:''}`,tag:'lent',amount:r.principal});
+    (r.payments||[]).forEach(p=>txns.push({date:p.date||'',label:'They repaid you',tag:'lentpay',amount:p.amount}));
+  });
+  txns.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  return {loans,recvs,iOwe,theyOwe,net:theyOwe-iOwe,txns};
+}
+function openStatement(name){STMT_PERSON=name;document.body.dataset.view='statement';render();window.scrollTo(0,0);}
+function stmtFromLoan(id){const l=DB.loans.find(x=>x.id===id);if(l)openStatement(loanParty(l)||l.name);}
+function stmtFromRecv(id){const r=DB.receivables.find(x=>x.id===id);if(r)openStatement(r.person);}
+function vStatements(){
+  const main=$('#main');
+  main.innerHTML=header('Statements','Combined ledger per person','');
+  const cps=counterparties();window._CPS=cps;
+  if(!cps.length){const e=el('div','card');e.innerHTML='<div class="empty">Add a loan or an “Owed to Me” entry, then each person gets a combined statement here.</div>';main.appendChild(e);return;}
+  const c=el('div','card');
+  c.innerHTML=cps.map((name,i)=>{const s=personStatement(name);const net=s.net;
+    return `<div class="list-row" style="cursor:pointer" onclick="openStatement(window._CPS[${i}])"><div><div>${name}</div><div class="muted" style="font-size:11.5px">${net===0?'settled':net>0?'owes you '+fmt(Math.abs(net)):'you owe '+fmt(Math.abs(net))}</div></div><span class="num ${net>0?'val-green':net<0?'val-red':''}">${fmt(Math.abs(net))} ›</span></div>`;}).join('');
+  main.appendChild(c);
+}
+function vStatement(){
+  const main=$('#main');const name=STMT_PERSON;const s=personStatement(name);
+  main.innerHTML=header('Statement','Full transaction history',`<span class="chip" onclick="go('statements')" style="cursor:pointer">‹ All</span>`);
+  const net=s.net;
+  const oneWay=s.theyOwe===0||s.iOwe===0;
+  let sub;
+  if(s.theyOwe>0&&s.iOwe>0)sub=`They owe you ${fmt(s.theyOwe)} · you owe them ${fmt(s.iOwe)}`;
+  else if(s.theyOwe>0)sub=`${name} owes you ${fmt(s.theyOwe)}`;
+  else if(s.iOwe>0)sub=`You owe ${name} ${fmt(s.iOwe)}`;
+  else sub='Nothing outstanding either way';
+  const headline=net===0?(s.txns.length?'All settled':'No balance'):net>0?name+' owes you '+fmt(Math.abs(net)):'You owe '+name+' '+fmt(Math.abs(net));
+  const top=el('div','card');
+  top.innerHTML=`<div class="lbl">${name} — ${oneWay?'balance':'net position'}</div>
+    <div class="kpi sm ${net>0?'val-green':net<0?'val-red':''}">${headline}</div>
+    <div class="sub" style="margin-top:8px">${sub}</div>`;
+  main.appendChild(top);
+  const tc=el('div','card');tc.style.marginTop='16px';
+  tc.innerHTML=`<div class="sectit" style="margin:0 0 14px">All transactions</div>`+
+    (s.txns.length?s.txns.map(t=>{const col=(t.tag==='lent'||t.tag==='owepay')?'val-green':(t.tag==='owe'||t.tag==='lentpay')?'val-red':'';
+      return `<div class="list-row"><div><div>${t.label}</div><div class="muted" style="font-size:11px">${t.date?new Date(t.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}):'opening'}</div></div><span class="num ${col}">${fmt(t.amount)}</span></div>`;}).join('')
+      :'<div class="empty">No transactions recorded.</div>');
+  main.appendChild(tc);
+  const note=el('div','card');note.style.marginTop='16px';
+  note.innerHTML=`<div class="muted" style="font-size:12px">Pulls together loans you took from ${name} (Debts) and money you lent them (Owed to Me). Green = moves in your favour, red = against you. Record each payment on either side to keep this accurate going forward.</div>`;
+  main.appendChild(note);
+}
+
+/* ---- CHITS (recurring contribution + payout) ---- */
+function chitMonthsPaid(c){
+  if(!c.start)return 0;const parts=c.start.split('-').map(Number);const now=new Date();
+  let n=(now.getFullYear()-parts[0])*12+(now.getMonth()+1-parts[1])+1;
+  return Math.max(0,Math.min(c.tenure||0,n));
+}
+function chitDone(c){return chitMonthsPaid(c)>=(c.tenure||0);}
+function chitNext(c){return nextDom(c.day||1);}
+function vChits(){
+  const main=$('#main');
+  main.innerHTML=header('Chits','Monthly contribution with a payout',`<span class="chip gold" onclick="addChit()" style="cursor:pointer">+ Add chit</span>`);
+  const list=DB.chits||[];
+  if(!list.length){const e=el('div','card');e.innerHTML='<div class="empty">No chits yet — add one with its monthly amount, pay date and tenure.</div>';main.appendChild(e);return;}
+  const active=list.filter(c=>!chitDone(c));
+  const top=el('div','grid g3');
+  top.innerHTML=kpi('Active chits',active.length,`of ${list.length}`,'val-gold')+
+    kpi('Monthly outgo',fmt(sumBy(active,c=>c.monthly)),'across active','val-red')+
+    kpi('Claimed',fmtL(sumBy(list.filter(c=>c.claimed),c=>c.claimedAmount||0)),'received so far','val-green');
+  main.appendChild(top);
+  list.forEach(c=>{
+    const paid=chitMonthsPaid(c),totPaid=paid*c.monthly,commit=(c.tenure||0)*c.monthly,pct=c.tenure?Math.min(100,Math.round(paid/c.tenure*100)):0,done=chitDone(c),nd=chitNext(c);
+    const card=el('div','card');card.style.marginTop='16px';
+    card.innerHTML=`<div class="lbl">${c.name} ${c.claimed?'<span class="pill ok">claimed</span>':done?'<span class="pill">completed</span>':''}</div>
+      <div class="kpi sm">${fmt(c.monthly)}<span class="muted" style="font-size:13px">/mo · ${paid}/${c.tenure} months</span></div>
+      <div class="bar green"><span data-w="${pct}%" style="width:0"></span></div>
+      <div class="sub" style="margin-top:8px">Paid in ${fmt(totPaid)} of ${fmt(commit)} committed${!done?` · next on ${nd.toLocaleDateString('en-IN',{day:'numeric',month:'short'})}`:''}</div>
+      ${c.claimed?`<div class="muted" style="font-size:12px;margin-top:8px">Received ${fmt(c.claimedAmount)}${c.claimedDate?' on '+new Date(c.claimedDate).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}):''} · net ${fmt(c.claimedAmount-commit)} over the full term</div>`:''}
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">${!c.claimed?`<button class="btn sm gold" onclick="claimChit('${c.id}')">Mark claimed</button>`:''}<button class="btn sm" onclick="editChit('${c.id}')">Edit</button><button class="btn sm danger" onclick="delChit('${c.id}')">Delete</button></div>`;
+    main.appendChild(card);
+  });
+}
+function addChit(){modal('Add chit',`
+   <div class="field"><label>Name</label><input id="chn" placeholder="e.g. Kuri group / Margin chit"></div>
+   <div class="row"><div class="field"><label>Monthly amount ₹</label><input id="chm" type="number"></div>
+   <div class="field"><label>Pay day (1-31)</label><input id="chd" type="number" min="1" max="31" placeholder="5"></div></div>
+   <div class="row"><div class="field"><label>Tenure (months)</label><input id="cht" type="number" placeholder="25"></div>
+   <div class="field"><label>Start month</label><input id="chs" type="month" value="${new Date().toISOString().slice(0,7)}"></div></div>
+   <button class="btn gold" style="width:100%" onclick="saveChit()">Save</button>`);}
+function saveChit(){DB.chits=DB.chits||[];DB.chits.push({id:uid(),name:$('#chn').value||'Chit',monthly:+$('#chm').value||0,day:+$('#chd').value||1,tenure:+$('#cht').value||0,start:$('#chs').value||new Date().toISOString().slice(0,7),claimed:false,claimedAmount:0,claimedDate:''});save();closeModal();render();}
+function editChit(id){const c=DB.chits.find(x=>x.id===id);modal('Edit chit',`
+   <div class="field"><label>Name</label><input id="chn" value="${c.name||''}"></div>
+   <div class="row"><div class="field"><label>Monthly amount ₹</label><input id="chm" type="number" value="${c.monthly||0}"></div>
+   <div class="field"><label>Pay day (1-31)</label><input id="chd" type="number" min="1" max="31" value="${c.day||1}"></div></div>
+   <div class="row"><div class="field"><label>Tenure (months)</label><input id="cht" type="number" value="${c.tenure||0}"></div>
+   <div class="field"><label>Start month</label><input id="chs" type="month" value="${c.start||''}"></div></div>
+   <button class="btn gold" style="width:100%" onclick="updChit('${id}')">Save</button>`);}
+function updChit(id){const c=DB.chits.find(x=>x.id===id);c.name=$('#chn').value||c.name;c.monthly=+$('#chm').value||0;c.day=+$('#chd').value||1;c.tenure=+$('#cht').value||0;c.start=$('#chs').value||c.start;save();closeModal();render();}
+function delChit(id){DB.chits=DB.chits.filter(c=>c.id!==id);save();render();}
+function claimChit(id){const c=DB.chits.find(x=>x.id===id);modal('Mark chit claimed',`
+   <p class="muted" style="font-size:12.5px;margin-bottom:12px">${c.name} — record the lump sum you received when the chit was claimed. You still keep paying the monthly until the tenure ends.</p>
+   <div class="field"><label>Amount received ₹</label><input id="cla" type="number"></div>
+   <div class="field"><label>Date</label><input id="cld" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+   <button class="btn gold" style="width:100%" onclick="saveClaim('${id}')">Save</button>`);}
+function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').value||0;if(amt<=0){toast('Enter the amount received');return;}c.claimed=true;c.claimedAmount=amt;c.claimedDate=$('#cld').value||new Date().toISOString().slice(0,10);save();closeModal();render();toast('Chit marked claimed');}
+
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.10.0',notes:['Statements — a combined ledger per person that nets money you borrowed from them against money you lent them (open it from any debt or “Owed to Me” entry).','Chits — track a monthly chit (amount, date, tenure) and mark it claimed when you receive the payout; it shows in Coming Up and your monthly outgo.','Loan payments are now logged with dates, so your statements build a full history going forward.']},
  {v:'1.9.0',notes:['Renewals vault — track insurance, AMCs, domains and warranties with expiry alerts.','Compliance calendar — GST (GSTR-1/3B), advance-tax and ITR due dates with countdowns.','Zakat calculator — 2.5% estimate across cash, gold, receivables and business assets, against nisab.','App Lock — set a PIN to lock the whole app on open (your vaults stay separately encrypted).']},
  {v:'1.8.0',notes:['Safety Net — emergency-fund runway (how many months you could cover) plus sinking funds for lumpy bills like insurance, festivals and advance tax.','Gold tracker — log grams, purity and what you paid; set today\'s rate to see live value and gain/loss.','Business vs Personal report — your debts, obligations and spending split side by side for GST/ITR.','Import a CSV bank/card statement straight into Spending — read on-device only, nothing uploaded.']},
  {v:'1.7.0',notes:['New Spending tracker — log expenses by category and see where your money goes each month.','Net-worth trend chart that builds month over month.','Backup reminders so your data stays safe.','Smarter “Heads Up” nudges on the Home screen.']},
@@ -1731,7 +1886,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.9.0';
+const APP_VERSION='1.10.2';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
