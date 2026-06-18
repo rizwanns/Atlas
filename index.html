@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
@@ -30,8 +30,8 @@
 input,textarea,select{-webkit-user-select:text;user-select:text}
 svg,img{pointer-events:none}
 html,body{height:100%}
-html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
-body{touch-action:manipulation;overflow-x:hidden;
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation;overscroll-behavior-x:none}
+body{touch-action:manipulation;overflow-x:hidden;overscroll-behavior-x:none;
   background:var(--bg); color:var(--txt); font-family:var(--sans);
   font-size:15px; line-height:1.5; overflow-x:hidden;
   background-image:radial-gradient(1200px 600px at 80% -10%,rgba(201,168,106,.07),transparent 60%),radial-gradient(900px 500px at -10% 110%,rgba(122,167,224,.05),transparent 55%);
@@ -1465,6 +1465,8 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.17.0',notes:['<b>Due-date reminders</b> — in Cash-Flow Forecast, tap “⏰ Add reminders to calendar” and Atlas drops all your chits, EMIs, card bills, subscriptions and renewals into your phone calendar, each with alerts <b>2 days before, 1 day before, and on the day</b>. Your calendar then notifies you even when Atlas is closed.']},
+ {v:'1.16.0',notes:['<b>Swipe from the left edge</b> to open the menu (and swipe left to close it). The browser’s back-swipe is disabled so it won’t leave the app.']},
  {v:'1.15.1',notes:['Renamed to “Finance Centre”.','Pinch/double-tap zoom is now disabled for a fixed, app-like feel — screens scroll instead of zooming.','EMIs and recurring subscriptions are now tidy cards on mobile (no more sideways scrolling).','Backups now save as a single file (atlas-backup.json) that replaces the old one instead of piling up.']},
  {v:'1.15.0',notes:['<b>Cash-Flow Forecast</b> — a 60-day projection of money in vs out with a running balance, and a warning if you’ll dip into the red before a payday. Set your “cash on hand” and payday from the screen.','<b>Auto-backup</b> — turn on weekly or daily and Atlas downloads a backup on open; keep your Downloads folder syncing to Drive and it lands in the cloud.','<b>Vehicles now count toward Net Worth</b> — add a market value in Garage.','<b>Multiple income sources</b> — track shop drawings, rent, salary separately; they total into your monthly income.','<b>Spending budgets</b> — set a monthly cap per category and see progress bars with a warning as you approach.','<b>Goals</b> now show a projected finish date and an optional target date.','<b>Zakat hawl tracker</b> — counts down the lunar year to when your Zakat is due.','<b>Prepayment calculator</b> on bank loans — see the interest you’d save before paying.','Smarter Home nudges (cash dips, bills due, renewals, budget overspend).']},
  {v:'1.14.0',notes:['Cards redesigned like a card-bill app: each card shows the current <b>bill amount, due date and statement date</b>, with the total due across all cards at the top.','<b>Update bill</b> and <b>Record payment</b> are now one tap — partial payments are supported, and paying lowers the card balance automatically.','EMIs now carry a real <b>next due date</b> and a “Paid” button to tick off each month.','Subscriptions can be set to <b>Pay as you go</b> for usage-based services (cloud, AI credits, etc.) — these stay out of your fixed monthly total; log each charge as it happens.','Every date field uses a calendar picker.']},
@@ -1511,9 +1513,33 @@ function setCash(){modal('Cash on hand',`
    <p class="muted" style="font-size:12.5px;margin-bottom:12px">Your current bank + cash balance. The forecast starts from here and adds income / subtracts dues over the next 60 days.</p>
    <div class="field"><label>Cash on hand ₹</label><input id="scash" type="number" value="${DB.plan.startCash||''}"></div>
    <button class="btn gold" style="width:100%" onclick="DB.plan.startCash=+document.getElementById('scash').value||0;save();closeModal();render()">Save</button>`);}
+function exportReminders(){
+  const pad=n=>String(n).padStart(2,'0');
+  const esc=s=>String(s).replace(/([,;\\])/g,'\\$1').replace(/\n/g,' ');
+  const mk=(uid,summary,dt,rrule)=>{const ds=dt.getFullYear()+pad(dt.getMonth()+1)+pad(dt.getDate());
+    let s='BEGIN:VEVENT\r\nUID:'+uid+'@atlas\r\nDTSTART:'+ds+'T090000\r\nDTEND:'+ds+'T093000\r\nSUMMARY:'+esc(summary)+'\r\n';
+    if(rrule)s+='RRULE:'+rrule+'\r\n';
+    ['-P2D','-P1D','-PT0M'].forEach(tr=>{s+='BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:'+esc(summary)+'\r\nTRIGGER:'+tr+'\r\nEND:VALARM\r\n';});
+    return s+'END:VEVENT';};
+  const ev=[];
+  (DB.chits||[]).filter(c=>!chitDone(c)).forEach(c=>{const rem=(c.tenure||0)?Math.max(1,c.tenure-chitMonthsPaid(c)):0;ev.push(mk('chit-'+c.id,'Chit: '+c.name+' '+fmt(c.monthly),nextDom(c.day||1),'FREQ=MONTHLY'+(rem?';COUNT='+rem:'')));});
+  (DB.emis||[]).filter(e=>e.months>0).forEach(e=>{ev.push(mk('emi-'+e.id,'EMI: '+e.name+' '+fmt(e.amount),e.dueDate?new Date(e.dueDate):nextDom(5),'FREQ=MONTHLY;COUNT='+e.months));});
+  (DB.cards||[]).forEach(c=>{if(c.dueDay)ev.push(mk('card-'+c.id,'Card bill: '+c.name,nextDom(c.dueDay),'FREQ=MONTHLY'));});
+  (DB.subs||[]).filter(s=>s.freq!=='payg').forEach(s=>{const d=subDate(s);if(d)ev.push(mk('sub-'+s.id,'Subscription: '+s.name+' '+fmt(s.amount),d,s.freq==='yearly'?'FREQ=YEARLY':'FREQ=MONTHLY'));});
+  (DB.renewals||[]).forEach(r=>{if(r.expiry)ev.push(mk('ren-'+r.id,'Renewal: '+r.name+(r.amount?' '+fmt(r.amount):''),new Date(r.expiry),''));});
+  if(!ev.length){toast('Add chits, EMIs, cards or renewals first');return;}
+  const ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Atlas//Finance//EN\r\nCALSCALE:GREGORIAN\r\n'+ev.join('\r\n')+'\r\nEND:VCALENDAR';
+  const blob=new Blob([ics],{type:'text/calendar'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='atlas-reminders.ics';a.click();
+  toast('Opening calendar file — tap to add '+ev.length+' reminders');
+}
 function vCal(){
   const main=$('#main');
-  main.innerHTML=header('Cash-Flow Forecast','Next 60 days · projected balance',`<span class="chip gold" onclick="setCash()" style="cursor:pointer">⚙ Cash on hand</span>`);
+  main.innerHTML=header('Cash-Flow Forecast','Next 60 days · projected balance',`<span class="chip" onclick="exportReminders()" style="cursor:pointer">⏰ Reminders</span> <span class="chip gold" onclick="setCash()" style="cursor:pointer">⚙ Cash on hand</span>`);
+  const rem=el('div','card');
+  rem.innerHTML=`<div class="lbl">Due-date reminders</div>
+    <div class="muted" style="font-size:12.5px;margin:6px 0 12px">Atlas can't ring alarms on its own when it's closed, but it can drop all your due dates into your phone's calendar with alerts <b>2 days before, 1 day before, and on the day</b>. Your calendar then notifies you reliably — even when Atlas isn't open.</div>
+    <button class="btn gold sm" onclick="exportReminders()">⏰ Add reminders to calendar</button>`;
+  main.appendChild(rem);
   const f=forecast(60);
   const top=el('div','grid g3');
   top.innerHTML=kpi('Cash now',fmtL(f.start),'set via ⚙','val-gold')+
@@ -2271,6 +2297,27 @@ function go(v){
 document.querySelectorAll('#nav a[data-v]').forEach(a=>a.addEventListener('click',()=>go(a.dataset.v)));
 
 function toggleNav(forceClose){const s=$('#side'),sc=$('#scrim');const open=forceClose?false:!s.classList.contains('open');s.classList.toggle('open',open);sc.classList.toggle('on',open);}
+/* swipe: left-edge → right opens sidebar; left swipe on open sidebar closes it */
+(function(){let sx=null,sy=null,edge=false;
+  document.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1){sx=null;return;}
+    if(document.querySelector('.modal-bg,#applock')){sx=null;return;}
+    const t=e.touches[0];sx=t.clientX;sy=t.clientY;
+    const sideOpen=$('#side').classList.contains('open');
+    edge = sideOpen ? true : (sx<=30);
+  },{passive:true});
+  document.addEventListener('touchend',e=>{
+    if(sx==null||!edge){sx=null;return;}
+    const t=e.changedTouches&&e.changedTouches[0];if(!t){sx=null;return;}
+    const dx=t.clientX-sx,dy=t.clientY-sy;
+    if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.4&&window.innerWidth<=900){
+      const sideOpen=$('#side').classList.contains('open');
+      if(dx>0&&!sideOpen)toggleNav();        // edge → right: open
+      else if(dx<0&&sideOpen)toggleNav(true); // left: close
+    }
+    sx=null;edge=false;
+  },{passive:true});
+})();
 
 /* backup / restore (vault stays encrypted inside DB.vaultEnc) */
 $('#lockBtn').addEventListener('click',appLockSettings);
@@ -2309,7 +2356,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.15.1';
+const APP_VERSION='1.17.1';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
