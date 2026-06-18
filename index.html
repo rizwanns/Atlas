@@ -1465,6 +1465,7 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.17.2',notes:['Swiping back (or the system back gesture) no longer closes the app. It now closes an open dialog or the menu, or returns you to Home — so you won’t lose your place by accident. To actually exit, use your phone’s app switcher.']},
  {v:'1.17.0',notes:['<b>Due-date reminders</b> — in Cash-Flow Forecast, tap “⏰ Add reminders to calendar” and Atlas drops all your chits, EMIs, card bills, subscriptions and renewals into your phone calendar, each with alerts <b>2 days before, 1 day before, and on the day</b>. Your calendar then notifies you even when Atlas is closed.']},
  {v:'1.16.0',notes:['<b>Swipe from the left edge</b> to open the menu (and swipe left to close it). The browser’s back-swipe is disabled so it won’t leave the app.']},
  {v:'1.15.1',notes:['Renamed to “Finance Centre”.','Pinch/double-tap zoom is now disabled for a fixed, app-like feel — screens scroll instead of zooming.','EMIs and recurring subscriptions are now tidy cards on mobile (no more sideways scrolling).','Backups now save as a single file (atlas-backup.json) that replaces the old one instead of piling up.']},
@@ -2318,6 +2319,19 @@ function toggleNav(forceClose){const s=$('#side'),sc=$('#scrim');const open=forc
     sx=null;edge=false;
   },{passive:true});
 })();
+/* back-gesture trap: edge-swipe / system back is consumed inside the app instead of closing it */
+(function(){
+  function pushTrap(){try{history.pushState({atlas:1},'');}catch(e){}}
+  pushTrap();
+  window.addEventListener('popstate',function(){
+    if($('#applock')){pushTrap();return;}
+    if($('#modalBg')&&$('#modalBg').classList.contains('on')){closeModal();pushTrap();return;}
+    const s=$('#side');if(s&&s.classList.contains('open')){toggleNav(true);pushTrap();return;}
+    const v=document.body.dataset.view;
+    if(v&&v!=='home'){go('home');}
+    pushTrap();
+  });
+})();
 
 /* backup / restore (vault stays encrypted inside DB.vaultEnc) */
 $('#lockBtn').addEventListener('click',appLockSettings);
@@ -2356,7 +2370,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.17.1';
+const APP_VERSION='1.17.2';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
