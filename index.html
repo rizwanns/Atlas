@@ -2298,38 +2298,48 @@ function go(v){
 document.querySelectorAll('#nav a[data-v]').forEach(a=>a.addEventListener('click',()=>go(a.dataset.v)));
 
 function toggleNav(forceClose){const s=$('#side'),sc=$('#scrim');const open=forceClose?false:!s.classList.contains('open');s.classList.toggle('open',open);sc.classList.toggle('on',open);}
-/* swipe: left-edge → right opens sidebar; left swipe on open sidebar closes it */
-(function(){let sx=null,sy=null,edge=false;
+/* swipe: a right-swipe opens the menu; left-swipe closes it */
+(function(){let sx=null,sy=null,ok=false;
   document.addEventListener('touchstart',e=>{
-    if(e.touches.length!==1){sx=null;return;}
-    if(document.querySelector('.modal-bg,#applock')){sx=null;return;}
+    if(e.touches.length!==1){sx=null;ok=false;return;}
+    if($('#applock')||($('#modalBg')&&$('#modalBg').classList.contains('on'))){sx=null;ok=false;return;}
     const t=e.touches[0];sx=t.clientX;sy=t.clientY;
-    const sideOpen=$('#side').classList.contains('open');
-    edge = sideOpen ? true : (sx<=30);
+    const inScroll=e.target&&e.target.closest?e.target.closest('.tscroll,input,textarea,select,button'):null;
+    ok=!inScroll;
   },{passive:true});
   document.addEventListener('touchend',e=>{
-    if(sx==null||!edge){sx=null;return;}
-    const t=e.changedTouches&&e.changedTouches[0];if(!t){sx=null;return;}
-    const dx=t.clientX-sx,dy=t.clientY-sy;
-    if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.4&&window.innerWidth<=900){
+    if(sx==null||!ok){sx=null;return;}
+    const t=e.changedTouches&&e.changedTouches[0];if(!t){sx=null;ok=false;return;}
+    const dx=t.clientX-sx,dy=t.clientY-sy,W=window.innerWidth;
+    if(W<=900&&Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.3){
       const sideOpen=$('#side').classList.contains('open');
-      if(dx>0&&!sideOpen)toggleNav();        // edge → right: open
-      else if(dx<0&&sideOpen)toggleNav(true); // left: close
+      if(dx>0&&!sideOpen&&sx<W*0.6)toggleNav();        // right swipe (left ~60% of screen) opens
+      else if(dx<0&&sideOpen)toggleNav(true);           // left swipe closes
     }
-    sx=null;edge=false;
+    sx=null;ok=false;
   },{passive:true});
 })();
 /* back-gesture trap: edge-swipe / system back is consumed inside the app instead of closing it */
 (function(){
+  let exitArmed=false,exitTimer=null;
   function pushTrap(){try{history.pushState({atlas:1},'');}catch(e){}}
   pushTrap();
   window.addEventListener('popstate',function(){
-    if($('#applock')){pushTrap();return;}
-    if($('#modalBg')&&$('#modalBg').classList.contains('on')){closeModal();pushTrap();return;}
-    const s=$('#side');if(s&&s.classList.contains('open')){toggleNav(true);pushTrap();return;}
+    if($('#applock')){pushTrap();exitArmed=false;return;}
+    if($('#modalBg')&&$('#modalBg').classList.contains('on')){closeModal();pushTrap();exitArmed=false;return;}
+    const s=$('#side');if(s&&s.classList.contains('open')){toggleNav(true);pushTrap();exitArmed=false;return;}
     const v=document.body.dataset.view;
-    if(v&&v!=='home'){go('home');}
-    pushTrap();
+    if(v&&v!=='home'){go('home');pushTrap();exitArmed=false;return;}
+    // Home, nothing open → swipe again to exit
+    if(!exitArmed){
+      exitArmed=true;toast('Swipe again to exit');
+      pushTrap();
+      clearTimeout(exitTimer);exitTimer=setTimeout(()=>{exitArmed=false;},2000);
+      return;
+    }
+    // second swipe within the window → let it leave (no re-trap)
+    exitArmed=false;
+    history.back();
   });
 })();
 
@@ -2370,7 +2380,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.17.2';
+const APP_VERSION='1.17.4';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
