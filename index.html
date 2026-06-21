@@ -1495,6 +1495,7 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.19.1',notes:['Vault first-time setup now shows a proper welcome screen with a "Set up" button instead of jumping straight to a keypad. "Forgot PIN?" no longer shows a scary browser dialog — it opens a clear in-app sheet explaining your options.']},
  {v:'1.19.0',notes:['<b>4-digit PIN keypad everywhere</b> — App Lock, Card Vault, and Login Vault all use a numeric dial pad. No keyboard, no typing — just tap 4 digits and you\'re in. PINs auto-submit on the 4th digit.']},
  {v:'1.18.2',notes:['When a new version is ready, a gold banner slides up from the bottom — tap <b>Update now</b> to reload instantly, or dismiss it and update later.']},
  {v:'1.18.1',notes:['Maintenance release — service worker cache refreshed and version bumped to ensure all devices pull the latest build.']},
@@ -2250,21 +2251,44 @@ async function _savePin(){
    ============================================================ */
 let _vaultPinNew='';
 function lockScreen(title){
-  const first=!DB.vaultEnc;
-  npReset(first?'vnew':'vault');
+  if(!DB.vaultEnc){
+    // First time — show a setup welcome card, not a lock screen
+    return `<div class="lockwrap card" style="text-align:center;padding:32px 24px">
+      <div style="font-size:48px;margin-bottom:12px">⚿</div>
+      <h3 style="font-family:var(--serif);font-size:22px">${title}</h3>
+      <p class="muted" style="margin:10px 0 24px;font-size:13px;line-height:1.6">Your ${title.replace(' Vault','')} entries are <b style="color:var(--gold2)">AES-256 encrypted</b> on-device.<br>Set a 4-digit PIN — only you know it.</p>
+      <button class="btn gold" style="width:100%" onclick="_startVaultSetup()">Set up ${title}</button>
+      <p class="muted" style="font-size:11px;margin-top:16px">Encrypted before it ever touches storage · never sent anywhere</p>
+    </div>`;
+  }
+  // Existing vault — show PIN entry
+  npReset('vault');
   return `<div class="lockwrap card" style="text-align:center;padding:28px 24px" id="lockScreenWrap">
     <div style="font-size:40px;margin-bottom:10px">⚿</div>
     <h3 style="font-family:var(--serif);font-size:22px">${title}</h3>
-    <p class="muted" style="margin:6px 0 22px;font-size:13px" id="lockScreenMsg">${first?'Create a 4-digit vault PIN':'Enter your 4-digit vault PIN'}</p>
-    ${npHTML(first?'vnew':'vault')}
-    ${npErrHTML(first?'vnew':'vault')}
-    <p class="muted" style="font-size:11px;margin-top:18px">AES-256-GCM · encrypted before it ever touches storage</p>
-    ${DB.vaultEnc?`<p style="font-size:11px;margin-top:10px;color:var(--muted);cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="_resetVault()">Forgot PIN? Reset vault</p>`:''}
+    <p class="muted" style="margin:6px 0 22px;font-size:13px">Enter your 4-digit vault PIN</p>
+    ${npHTML('vault')}
+    ${npErrHTML('vault')}
+    <p style="font-size:12px;margin-top:20px;color:var(--muted);cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="_forgotVaultPin()">Forgot PIN?</p>
   </div>`;
 }
-function _resetVault(){
-  if(!confirm('This deletes all vault data permanently. Continue?'))return;
-  DB.vaultEnc=null;VAULT={cards:[],logins:[]};MASTER_KEY=null;save();render();toast('Vault reset');
+function _startVaultSetup(){
+  npReset('vnew');
+  modal('Create vault PIN',`
+    <p class="np-label" style="margin-bottom:14px">Choose a 4-digit PIN for your vault</p>
+    ${npHTML('vnew')}${npErrHTML('vnew')}`);
+}
+function _forgotVaultPin(){
+  modal('Forgot vault PIN',`
+    <p class="muted" style="font-size:13px;line-height:1.6;margin-bottom:20px">
+      Your vault is AES-encrypted with your PIN. Without the PIN, the data cannot be decrypted — this is by design.<br><br>
+      <b style="color:var(--gold2)">Resetting</b> clears the encrypted data so you can create a new PIN and start fresh.
+    </p>
+    <button class="btn danger" style="width:100%" onclick="_doResetVault()">Reset vault &amp; start fresh</button>
+    <button class="btn" style="width:100%;margin-top:10px" onclick="closeModal()">Cancel — try PIN again</button>`);
+}
+function _doResetVault(){
+  DB.vaultEnc=null;VAULT={cards:[],logins:[]};MASTER_KEY=null;save();closeModal();render();toast('Vault reset — set a new PIN to get started');
 }
 async function doUnlock(){
   const pw=npVal('vault');
@@ -2275,14 +2299,9 @@ async function doUnlock(){
 function _vaultConfirmStep(){
   _vaultPinNew=npVal('vnew');
   npReset('vconf');
-  const wrap=document.getElementById('lockScreenWrap');
-  if(wrap){
-    document.getElementById('lockScreenMsg').textContent='Confirm your vault PIN';
-    const oldNp=wrap.querySelector('.numpad');const oldErr=wrap.querySelector('.np-err');
-    const tmp=document.createElement('div');tmp.innerHTML=npHTML('vconf')+npErrHTML('vconf');
-    if(oldNp)oldNp.replaceWith(tmp.children[0]);
-    if(oldErr)oldErr.replaceWith(tmp.children[0]);
-  }
+  modal('Confirm vault PIN',`
+    <p class="np-label" style="margin-bottom:14px">Enter the same PIN again</p>
+    ${npHTML('vconf')}${npErrHTML('vconf')}`);
 }
 async function _vaultCreate(){
   const pw=npVal('vconf');
@@ -2505,7 +2524,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + notify user when a new version is ready */
-const APP_VERSION='1.19.0';
+const APP_VERSION='1.19.1';
 let _swWaiting=null;
 function doUpdate(){if(_swWaiting){_swWaiting.postMessage('SKIP_WAITING');}else{location.reload();}}
 function dismissUpdate(){document.getElementById('updateBanner').classList.remove('show');}
