@@ -1465,6 +1465,7 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.18.1',notes:['Maintenance release — service worker cache refreshed and version bumped to ensure all devices pull the latest build.']},
  {v:'1.17.2',notes:['Swiping back (or the system back gesture) no longer closes the app. It now closes an open dialog or the menu, or returns you to Home — so you won’t lose your place by accident. To actually exit, use your phone’s app switcher.']},
  {v:'1.17.0',notes:['<b>Due-date reminders</b> — in Cash-Flow Forecast, tap “⏰ Add reminders to calendar” and Atlas drops all your chits, EMIs, card bills, subscriptions and renewals into your phone calendar, each with alerts <b>2 days before, 1 day before, and on the day</b>. Your calendar then notifies you even when Atlas is closed.']},
  {v:'1.16.0',notes:['<b>Swipe from the left edge</b> to open the menu (and swipe left to close it). The browser’s back-swipe is disabled so it won’t leave the app.']},
@@ -2380,7 +2381,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.17.4';
+const APP_VERSION='1.18.1';
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
   let reg=null, reloaded=false;
