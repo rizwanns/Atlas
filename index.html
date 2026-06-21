@@ -159,13 +159,12 @@ section.on{display:block}
 /* END NUMERIC KEYPAD */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(40px);background:var(--card2);border:1px solid var(--line2);color:var(--txt);padding:12px 20px;border-radius:12px;font-size:13px;z-index:500;opacity:0;transition:.3s;pointer-events:none}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
-#updateBanner{position:fixed;bottom:0;left:0;right:0;z-index:600;background:linear-gradient(135deg,#1a1508,#241d0a);border-top:1px solid var(--gold);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;transform:translateY(100%);transition:transform .35s cubic-bezier(.22,.68,0,1.2);pointer-events:none}
-#updateBanner.show{transform:translateY(0);pointer-events:auto}
-#updateBanner .ub-text{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;color:var(--gold2)}
-#updateBanner .ub-text svg{flex-shrink:0}
-#updateBanner .ub-sub{font-size:12px;color:var(--muted);font-weight:400;margin-top:2px}
-#updateBanner .ub-btn{background:var(--gold);color:#1a1206;border:none;border-radius:10px;padding:9px 18px;font-size:13px;font-weight:600;font-family:var(--sans);cursor:pointer;white-space:nowrap;flex-shrink:0}
-#updateBanner .ub-dismiss{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px;line-height:1;flex-shrink:0}
+#updateBanner{position:fixed;top:16px;right:16px;z-index:700;background:#fff;color:#111;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.22);opacity:0;transform:translateY(-8px) scale(.95);transition:opacity .25s,transform .25s;pointer-events:none;max-width:220px}
+#updateBanner.show{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
+#updateBanner .ub-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0}
+#updateBanner .ub-text{font-size:12.5px;font-weight:600;color:#111;line-height:1.3;flex:1;cursor:pointer}
+#updateBanner .ub-sub{font-size:11px;font-weight:400;color:#666;margin-top:1px}
+#updateBanner .ub-dismiss{background:none;border:none;color:#999;font-size:16px;cursor:pointer;padding:0 0 0 4px;line-height:1;flex-shrink:0}
 .vswitch{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:16px}
 .vswitch button{flex:0 0 auto;border:1px solid var(--line2);background:var(--card);color:var(--txt2);border-radius:12px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)}
 .vswitch button.on{background:var(--gold-dim);color:var(--gold2);border-color:rgba(201,168,106,.3)}
@@ -289,14 +288,12 @@ section.on{display:block}
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
 <div id="updateBanner">
-  <div class="ub-text">
-    <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="#c9a86a" stroke-width="1.5"/><path d="M12 7v5l3 3" stroke="#c9a86a" stroke-width="1.5" stroke-linecap="round"/></svg>
-    <div><div>New version available</div><div class="ub-sub">Tap to get the latest update</div></div>
+  <div class="ub-dot"></div>
+  <div class="ub-text" onclick="doUpdate()">
+    <div>Tap to refresh</div>
+    <div class="ub-sub">New update available</div>
   </div>
-  <div style="display:flex;align-items:center;gap:8px">
-    <button class="ub-btn" onclick="doUpdate()">Update now</button>
-    <button class="ub-dismiss" onclick="dismissUpdate()" aria-label="Dismiss">×</button>
-  </div>
+  <button class="ub-dismiss" onclick="dismissUpdate()" aria-label="Dismiss">×</button>
 </div>
 <input type="file" id="fileIn" accept="application/json" style="display:none" />
 
@@ -1495,6 +1492,7 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.19.3',notes:['Update notification is now a small white pill in the top-right corner — tap it to refresh, or × to dismiss.']},
  {v:'1.19.2',notes:['Login Vault no longer scrolls the whole page — the list fills the screen and scrolls internally, keeping the search bar and buttons always visible.']},
  {v:'1.19.1',notes:['Vault first-time setup now shows a proper welcome screen with a "Set up" button instead of jumping straight to a keypad. "Forgot PIN?" no longer shows a scary browser dialog — it opens a clear in-app sheet explaining your options.']},
  {v:'1.19.0',notes:['<b>4-digit PIN keypad everywhere</b> — App Lock, Card Vault, and Login Vault all use a numeric dial pad. No keyboard, no typing — just tap 4 digits and you\'re in. PINs auto-submit on the 4th digit.']},
@@ -2529,7 +2527,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + notify user when a new version is ready */
-const APP_VERSION='1.19.2';
+const APP_VERSION='1.19.3';
 let _swWaiting=null;
 function doUpdate(){if(_swWaiting){_swWaiting.postMessage('SKIP_WAITING');}else{location.reload();}}
 function dismissUpdate(){document.getElementById('updateBanner').classList.remove('show');}
