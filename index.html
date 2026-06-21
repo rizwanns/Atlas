@@ -1159,7 +1159,7 @@ function vSubs(){
   main.appendChild(top);
   const c=el('div','card');c.style.marginTop='16px';
   c.innerHTML=`<div class="sectit" style="margin:0 0 14px">Recurring</div>`+
-   ([...recurring].sort((a,b)=>subDays(a)-subDays(b)).map(s=>{const nd=subDate(s);return `<div class="list-row"><div><div>${s.name} <span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></div><div class="muted" style="font-size:11.5px">${s.card||'—'} · ${s.freq==='yearly'?'yearly':'monthly'}${nd?' · next '+nd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}):''}</div></div><div style="text-align:right;white-space:nowrap"><span class="num">${fmt(s.amount)}</span> <button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></div></div>`;}).join('')||'<div class="empty">No recurring subscriptions.</div>');
+   ([...recurring].sort((a,b)=>subDays(a)-subDays(b)).map(s=>{const nd=subDate(s);const sched=s.freq==='yearly'?('yearly'+(s.month?' · '+new Date(2000,s.month-1,1).toLocaleDateString('en-IN',{month:'long'}):'')):'monthly';return `<div class="list-row"><div><div>${s.name} <span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></div><div class="muted" style="font-size:11.5px">${s.card||'—'} · ${sched}${nd?' · next '+nd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}):''}</div></div><div style="text-align:right;white-space:nowrap"><span class="num">${fmt(s.amount)}</span> <button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></div></div>`;}).join('')||'<div class="empty">No recurring subscriptions.</div>');
   main.appendChild(c);
   const pc=el('div','card');pc.style.marginTop='16px';
   pc.innerHTML=`<div class="sectit" style="margin:0 0 4px">Pay as you go</div>
@@ -1175,20 +1175,19 @@ function vSubs(){
 }
 function addSub(){
   const cardOpts=DB.cards.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
-  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
   modal('Add subscription',`
   <div class="field"><label>Name</label><input id="sn"></div>
-  <div class="field"><label>Billing</label><select id="sf" onchange="document.getElementById('subWhen').style.display=this.value==='payg'?'none':'block'">
+  <div class="field"><label>Billing</label><select id="sf" onchange="document.getElementById('subMonth').style.display=this.value==='yearly'?'block':'none'">
     <option value="monthly">Monthly (fixed)</option><option value="yearly">Yearly (fixed)</option><option value="payg">Pay as you go</option></select></div>
   <div class="field"><label>Amount ₹ <span class="muted" style="font-weight:400">(typical, for pay-as-you-go)</span></label><input id="sa" type="number"></div>
-  <div id="subWhen">
-    <div class="row"><div class="field"><label>Day (1-31)</label><input id="sday" type="number" min="1" max="31" placeholder="5"></div>
-    <div class="field"><label>Month (yearly)</label><select id="smon"><option value="0">—</option>${months.map((mn,i)=>`<option value="${i+1}">${mn}</option>`).join('')}</select></div></div>
+  <div id="subMonth" style="display:none">
+    <div class="field"><label>Month</label><select id="smon"><option value="0">—</option>${months.map((mn,i)=>`<option value="${i+1}">${mn}</option>`).join('')}</select></div>
   </div>
   <div class="field"><label>Paid with</label><select id="sc">${cardOpts}<option value="Debit card">Debit card</option><option value="UPI / Bank">UPI / Bank auto-debit</option><option value="">Other</option></select></div>
   <div class="field"><label>Scope</label><select id="ss"><option value="business">Business</option><option value="personal">Personal</option></select></div>
   <button class="btn gold" style="width:100%" onclick="saveSub()">Save</button>`);}
-function saveSub(){DB.subs.push({id:uid(),name:$('#sn').value||'Sub',amount:+$('#sa').value||0,freq:$('#sf').value,day:+$('#sday').value||1,month:+$('#smon').value||0,card:$('#sc').value||'',scope:$('#ss').value});save();closeModal();render();}
+function saveSub(){const freq=$('#sf').value;DB.subs.push({id:uid(),name:$('#sn').value||'Sub',amount:+$('#sa').value||0,freq,day:1,month:freq==='yearly'?(+$('#smon').value||0):0,card:$('#sc').value||'',scope:$('#ss').value});save();closeModal();render();}
 function delSub(id){DB.subs=DB.subs.filter(s=>s.id!==id);save();render();}
 function paygCharge(id){const s=DB.subs.find(x=>x.id===id);if(!s)return;
   modal('Log a charge — '+s.name,`
@@ -1439,6 +1438,7 @@ function vStatement(){
 function chitMonthsPaid(c){
   if(!c.start)return 0;const parts=c.start.split('-').map(Number);const now=new Date();
   let n=(now.getFullYear()-parts[0])*12+(now.getMonth()+1-parts[1])+1;
+  if(now.getDate()<(c.day||1))n--; // this month isn't paid until its pay-day arrives
   return Math.max(0,Math.min(c.tenure||0,n));
 }
 function chitDone(c){return chitMonthsPaid(c)>=(c.tenure||0);}
@@ -1492,6 +1492,13 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.19.4',notes:[
+   '<b>Smarter Add Card form</b> — the card number now spaces itself into groups of four as you type, the expiry auto-formats to MM/YY, and the network is a dropdown that auto-detects Visa / Mastercard / Amex / RuPay / Diners / Discover from the number (you can still override). A live card preview updates as you type.',
+   '<b>Scan a card</b> — tap “📷 Scan card” to snap your card with the camera; Atlas reads the number and expiry for you (best-effort — always double-check, and the photo is never stored).',
+   'Dialogs no longer close when you tap the dimmed area behind them — so a stray tap won’t discard what you were typing. Close with the × button (the back gesture still works).',
+   '<b>Simpler subscriptions</b> — no more “day of the month” field. Monthly subs just say “monthly”; yearly subs let you pick the month and show “yearly · &lt;Month&gt;”.',
+   'Chits no longer count the current month as paid until the pay-day has actually arrived — your paid-month count is now accurate mid-month.'
+ ]},
  {v:'1.19.3',notes:['Update notification is now a small white pill in the top-right corner — tap it to refresh, or × to dismiss.']},
  {v:'1.19.2',notes:['Login Vault no longer scrolls the whole page — the list fills the screen and scrolls internally, keeping the search bar and buttons always visible.']},
  {v:'1.19.1',notes:['Vault first-time setup now shows a proper welcome screen with a "Set up" button instead of jumping straight to a keypad. "Forgot PIN?" no longer shows a scary browser dialog — it opens a clear in-app sheet explaining your options.']},
@@ -2334,14 +2341,96 @@ function vCardVault(){
   </div>`).join('')||'<div class="empty">No cards stored.</div>';
   main.appendChild(g);
 }
-function addVCard(){modal('Add card (encrypted)',`
-  <div class="field"><label>Bank / name</label><input id="vb_bank"></div>
-  <div class="field"><label>Card number</label><input id="vb_num" placeholder="1234 5678 9012 3456"></div>
-  <div class="row"><div class="field"><label>Holder</label><input id="vb_hold"></div>
-  <div class="field"><label>Network</label><input id="vb_net" placeholder="Visa / Amex"></div></div>
-  <div class="row"><div class="field"><label>Expiry</label><input id="vb_exp" placeholder="MM/YY"></div>
+/* ---- Card Vault add-form helpers ---- */
+function vcFmtNumber(v){const d=(v||'').replace(/\D/g,'').slice(0,19);return d.replace(/(.{4})/g,'$1 ').trim();}
+function vcDetectNetwork(d){
+  if(!d)return '';
+  if(/^4/.test(d))return 'Visa';
+  if(/^3[47]/.test(d))return 'Amex';
+  if(/^5[1-5]/.test(d)||/^2[2-7]/.test(d))return 'Mastercard';
+  if(/^508/.test(d)||/^60/.test(d)||/^65/.test(d)||/^81/.test(d)||/^82/.test(d))return 'RuPay';
+  if(/^30/.test(d)||/^36/.test(d)||/^38/.test(d))return 'Diners Club';
+  if(/^6011/.test(d)||/^64/.test(d)||/^65/.test(d))return 'Discover';
+  return '';
+}
+function vcOnNumInput(e){const inp=e.target;inp.value=vcFmtNumber(inp.value);
+  const net=vcDetectNetwork(inp.value.replace(/\D/g,''));
+  const sel=document.getElementById('vb_net');
+  if(net&&sel&&!sel.dataset.touched)sel.value=net;
+  vcUpdatePreview();}
+function vcOnExpInput(e){const inp=e.target;let d=inp.value.replace(/\D/g,'').slice(0,4);let out=d;
+  if(d.length>=2&&!(d.length===2&&e&&e.inputType==='deleteContentBackward'))out=d.slice(0,2)+'/'+d.slice(2);
+  inp.value=out;vcUpdatePreview();}
+function vcUpdatePreview(){
+  const val=id=>{const e=document.getElementById(id);return e?e.value:'';};
+  const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  set('vcp_bank',val('vb_bank')||'Card');
+  set('vcp_net',val('vb_net')||'');
+  set('vcp_num',val('vb_num')||'•••• •••• •••• ••••');
+  set('vcp_holder',val('vb_hold')||'CARD HOLDER');
+  set('vcp_exp',val('vb_exp')||'MM/YY');
+}
+async function vcLoadTesseract(){
+  if(window.Tesseract)return window.Tesseract;
+  await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+  return window.Tesseract;
+}
+function vcExtractNumber(text){
+  let m=text.match(/\d{4}[ -]\d{4}[ -]\d{4}(?:[ -]\d{1,4}){0,2}/);
+  if(m){const d=m[0].replace(/\D/g,'');if(d.length>=12&&d.length<=19)return d;}
+  for(const ln of text.split(/\n/)){const d=ln.replace(/[^\d]/g,'');if(d.length>=12&&d.length<=19)return d;}
+  return '';
+}
+function vcExtractExpiry(text){const m=text.match(/(0[1-9]|1[0-2])\s*\/\s*(\d{2})/);return m?(m[1]+'/'+m[2]):'';}
+async function vcScan(e){
+  const file=e.target.files&&e.target.files[0];e.target.value='';if(!file)return;
+  const note=document.getElementById('vb_scanNote');
+  const say=(msg,col)=>{if(note){note.textContent=msg;note.style.color=col||'var(--muted)';}};
+  say('Reading card… this can take a few seconds.');
+  let url=null;
+  try{
+    const T=await vcLoadTesseract();
+    url=URL.createObjectURL(file);
+    const {data}=await T.recognize(url,'eng');
+    const text=(data&&data.text)||'';
+    const num=vcExtractNumber(text), exp=vcExtractExpiry(text);
+    let got=false;
+    if(num){const inp=document.getElementById('vb_num');if(inp){inp.value=vcFmtNumber(num);vcOnNumInput({target:inp});got=true;}}
+    if(exp){const ei=document.getElementById('vb_exp');if(ei){ei.value=exp;vcUpdatePreview();got=true;}}
+    if(got)say('⚠ Scanned — double-check the number and expiry before saving. The photo isn\'t stored.','var(--amber)');
+    else say('Couldn\'t read — enter manually. The photo isn\'t stored.','var(--red)');
+  }catch(err){
+    say('Couldn\'t read — enter manually. The photo isn\'t stored.','var(--red)');
+  }finally{ if(url)URL.revokeObjectURL(url); }
+}
+function addVCard(){
+  const nets=['Visa','Mastercard','Amex','RuPay','Diners Club','Discover','Other'];
+  modal('Add card (encrypted)',`
+  <div id="vcPreview" style="background:linear-gradient(135deg,#2a2a30,#141416);border:1px solid var(--line2);border-radius:16px;padding:18px;margin-bottom:16px;min-height:120px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <span id="vcp_bank" style="font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase">Card</span>
+      <span id="vcp_net" class="num" style="font-size:13px;color:var(--gold2);font-weight:600"></span>
+    </div>
+    <div id="vcp_num" class="num" style="font-size:18px;letter-spacing:2px;margin:10px 0">•••• •••• •••• ••••</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end">
+      <span id="vcp_holder" style="font-size:12px;letter-spacing:.5px;color:var(--txt2)">CARD HOLDER</span>
+      <span id="vcp_exp" class="num" style="font-size:13px;color:var(--txt2)">MM/YY</span>
+    </div>
+  </div>
+  <div style="margin-bottom:10px">
+    <button type="button" class="btn" style="width:100%;justify-content:center" onclick="document.getElementById('vb_scan').click()">📷 Scan card</button>
+    <input type="file" id="vb_scan" accept="image/*" capture="environment" style="display:none" onchange="vcScan(event)">
+  </div>
+  <div id="vb_scanNote" class="muted" style="font-size:11.5px;margin-bottom:14px;line-height:1.5">⚠ Scanning is best-effort — always double-check scanned values before saving. The photo isn't stored.</div>
+  <div class="field"><label>Bank / name</label><input id="vb_bank" oninput="vcUpdatePreview()"></div>
+  <div class="field"><label>Card number</label><input id="vb_num" inputmode="numeric" autocomplete="off" placeholder="1234 5678 9012 3456" oninput="vcOnNumInput(event)"></div>
+  <div class="row"><div class="field"><label>Holder</label><input id="vb_hold" oninput="vcUpdatePreview()"></div>
+  <div class="field"><label>Network</label><select id="vb_net" onchange="this.dataset.touched='1';vcUpdatePreview()">${nets.map(n=>`<option value="${n}">${n}</option>`).join('')}</select></div></div>
+  <div class="row"><div class="field"><label>Expiry</label><input id="vb_exp" inputmode="numeric" autocomplete="off" placeholder="MM/YY" oninput="vcOnExpInput(event)"></div>
   <div class="field"><label>CVV (free text / letter code)</label><input id="vb_cvv"></div></div>
-  <button class="btn gold" style="width:100%" onclick="saveVCard()">Encrypt &amp; save</button>`);}
+  <button class="btn gold" style="width:100%" onclick="saveVCard()">Encrypt &amp; save</button>`);
+  vcUpdatePreview();
+}
 async function saveVCard(){VAULT.cards.push({bank:$('#vb_bank').value,number:$('#vb_num').value,holder:$('#vb_hold').value,network:$('#vb_net').value,expiry:$('#vb_exp').value,cvv:$('#vb_cvv').value});await encryptVault();closeModal();render();toast('Encrypted &amp; saved');}
 async function delVCard(i){VAULT.cards.splice(i,1);await encryptVault();render();}
 
@@ -2434,7 +2523,8 @@ function saveIncome(){
    ============================================================ */
 function modal(title,body){$('#modal').innerHTML=`<span class="x" onclick="closeModal()">×</span><h3>${title}</h3><div style="margin-top:16px">${body}</div>`;$('#modalBg').classList.add('on');}
 function closeModal(){$('#modalBg').classList.remove('on');}
-$('#modalBg').addEventListener('click',e=>{if(e.target===$('#modalBg'))closeModal();});
+/* Backdrop tap no longer closes the modal — a mis-tap shouldn't discard input.
+   Close only via the × button (or the Android back gesture, handled in popstate). */
 
 function go(v){
   document.body.dataset.view=v;
@@ -2527,7 +2617,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + notify user when a new version is ready */
-const APP_VERSION='1.19.3';
+const APP_VERSION='1.19.4';
 let _swWaiting=null;
 function doUpdate(){if(_swWaiting){_swWaiting.postMessage('SKIP_WAITING');}else{location.reload();}}
 function dismissUpdate(){document.getElementById('updateBanner').classList.remove('show');}
