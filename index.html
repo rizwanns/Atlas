@@ -144,27 +144,8 @@ section.on{display:block}
 
 .lockwrap{max-width:420px;margin:40px auto;text-align:center}
 .copybtn{cursor:pointer;color:var(--gold);font-size:12px;font-weight:600;border:none;background:none;font-family:var(--sans)}
-/* NUMERIC KEYPAD */
-.numpad{display:flex;flex-direction:column;align-items:center;gap:18px}
-.np-dots{display:flex;gap:20px;height:28px;align-items:center}
-.np-dots span{font-size:14px;color:var(--muted);transition:.15s cubic-bezier(.34,1.56,.64,1)}
-.np-dots span.np-on{color:var(--gold);font-size:18px;transform:scale(1.2)}
-.np-grid{display:grid;grid-template-columns:repeat(3,68px);gap:10px}
-.np-key{width:68px;height:68px;border-radius:50%;border:1px solid var(--line2);background:var(--card2);color:var(--txt);font-size:22px;font-family:var(--mono);cursor:pointer;display:grid;place-items:center;transition:.12s;-webkit-tap-highlight-color:transparent;user-select:none}
-.np-key:active{background:var(--gold-dim);border-color:var(--gold);transform:scale(.9)}
-.np-key.np-del{color:var(--muted);font-size:20px}
-.np-key.np-blank{visibility:hidden;pointer-events:none}
-.np-err{font-size:12px;color:var(--red);min-height:16px;text-align:center;margin-top:4px}
-.np-label{font-size:13px;color:var(--muted);text-align:center;margin-bottom:4px}
-/* END NUMERIC KEYPAD */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(40px);background:var(--card2);border:1px solid var(--line2);color:var(--txt);padding:12px 20px;border-radius:12px;font-size:13px;z-index:500;opacity:0;transition:.3s;pointer-events:none}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
-#updateBanner{position:fixed;top:16px;right:16px;z-index:700;background:#fff;color:#111;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.22);opacity:0;transform:translateY(-8px) scale(.95);transition:opacity .25s,transform .25s;pointer-events:none;max-width:220px}
-#updateBanner.show{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
-#updateBanner .ub-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0}
-#updateBanner .ub-text{font-size:12.5px;font-weight:600;color:#111;line-height:1.3;flex:1;cursor:pointer}
-#updateBanner .ub-sub{font-size:11px;font-weight:400;color:#666;margin-top:1px}
-#updateBanner .ub-dismiss{background:none;border:none;color:#999;font-size:16px;cursor:pointer;padding:0 0 0 4px;line-height:1;flex-shrink:0}
 .vswitch{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:16px}
 .vswitch button{flex:0 0 auto;border:1px solid var(--line2);background:var(--card);color:var(--txt2);border-radius:12px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)}
 .vswitch button.on{background:var(--gold-dim);color:var(--gold2);border-color:rgba(201,168,106,.3)}
@@ -231,6 +212,24 @@ section.on{display:block}
   .debttable{display:none}
   .debtcards{display:block}
 }
+/* passcode keypad (UPI / iOS style) */
+.pindots{display:flex;gap:13px;justify-content:center;margin:20px 0 24px;min-height:15px}
+.pindot{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--gold2);opacity:.6;transition:.15s}
+.pindot.on{background:var(--gold);border-color:var(--gold);opacity:1}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:280px;margin:0 auto}
+.key{height:62px;width:62px;justify-self:center;border-radius:50%;background:rgba(255,255,255,.045);border:1px solid var(--line);color:var(--txt);font-size:24px;font-family:var(--sans);display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;-webkit-user-select:none;transition:transform .08s,background .12s}
+.key:active{background:var(--gold-dim);transform:scale(.92)}
+.key.fn{font-size:20px;background:transparent;border:none;color:var(--gold2)}
+.key.blank{background:transparent;border:none;pointer-events:none}
+.shake{animation:shk .4s}
+@keyframes shk{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
+/* add-card live preview */
+.vcard-prev{border-radius:16px;padding:18px;background:linear-gradient(135deg,#33333b,#16161b);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.45);min-height:120px;display:flex;flex-direction:column;justify-content:space-between;margin-bottom:14px}
+.vcard-prev .pv-net{text-align:right;font-weight:700;color:var(--gold);letter-spacing:1px;font-size:12.5px;min-height:15px}
+.vcard-prev .pv-num{font-family:var(--mono);font-size:17px;letter-spacing:2px;margin:14px 0 12px;color:#fff;word-spacing:2px}
+.vcard-prev .pv-row{display:flex;justify-content:space-between}
+.vcard-prev .pv-row .k{opacity:.55;font-size:8.5px;letter-spacing:1px}
+.vcard-prev .pv-row .v{color:#fff;font-family:var(--mono);font-size:12px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -279,7 +278,8 @@ section.on{display:block}
       <a id="backupBtn"><span class="ic">⤓</span> Backup / Restore</a>
     </nav>
     <div style="margin-top:auto;padding:16px 12px 2px;color:var(--muted);font-size:10px;letter-spacing:1.5px;cursor:pointer" onclick="showWhatsNew(true)">ATLAS · <span id="verLbl"></span> · what's new</div>
-    <div style="padding:2px 12px 14px;color:var(--muted);font-size:8px;letter-spacing:.4px;opacity:.4">developed by EyeJayYou</div>
+    <div style="padding:6px 12px 2px"><a onclick="forceUpdate()" style="display:inline-flex;align-items:center;gap:6px;color:var(--gold2);font-size:11px;letter-spacing:.5px;cursor:pointer">⟳ Check for update</a></div>
+    <div style="padding:6px 12px 14px;color:var(--muted);font-size:8px;letter-spacing:.4px;opacity:.4">developed by EyeJayYou</div>
   </aside>
 
   <main class="main" id="main"><!-- sections injected --></main>
@@ -287,14 +287,6 @@ section.on{display:block}
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
-<div id="updateBanner">
-  <div class="ub-dot"></div>
-  <div class="ub-text" onclick="doUpdate()">
-    <div>Tap to refresh</div>
-    <div class="ub-sub">New update available</div>
-  </div>
-  <button class="ub-dismiss" onclick="dismissUpdate()" aria-label="Dismiss">×</button>
-</div>
 <input type="file" id="fileIn" accept="application/json" style="display:none" />
 
 <script>
@@ -541,7 +533,7 @@ const M=()=>metrics();
 
 function render(){
   const view=document.body.dataset.view||'overview';
-  const m=$('#main');m.innerHTML='';m.removeAttribute('style');
+  $('#main').innerHTML='';
   ({home:vHome,overview:vOverview,advisor:vAdvisor,debts:vDebts,owed:vDebts,statements:vDebts,statement:vDebts,person:vPerson,repay:vRepay,cards:vCards,subs:vSubs,
     networth:vNet,safety:vSafety,gold:vGold,chits:vChits,bizrep:vBizRep,compliance:vComp,zakat:vZakat,renewals:vRenew,goals:vGoals,calendar:vCal,vacation:vVac,garage:vGarage,lifestyle:vLife,
     cardvault:vCardVault,loginvault:vLoginVault}[view]||vHome)();
@@ -1159,7 +1151,7 @@ function vSubs(){
   main.appendChild(top);
   const c=el('div','card');c.style.marginTop='16px';
   c.innerHTML=`<div class="sectit" style="margin:0 0 14px">Recurring</div>`+
-   ([...recurring].sort((a,b)=>subDays(a)-subDays(b)).map(s=>{const nd=subDate(s);return `<div class="list-row"><div><div>${s.name} <span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></div><div class="muted" style="font-size:11.5px">${s.card||'—'} · ${s.freq==='yearly'?'yearly':'monthly'}${nd?' · next '+nd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}):''}</div></div><div style="text-align:right;white-space:nowrap"><span class="num">${fmt(s.amount)}</span> <button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></div></div>`;}).join('')||'<div class="empty">No recurring subscriptions.</div>');
+   ([...recurring].sort((a,b)=>subDays(a)-subDays(b)).map(s=>{const nd=subDate(s);return `<div class="list-row"><div><div>${s.name} <span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></div><div class="muted" style="font-size:11.5px">${s.card||'—'} · ${s.freq==='yearly'?('yearly'+(nd?' · '+nd.toLocaleDateString('en-IN',{month:'long'}):'')):'monthly'}</div></div><div style="text-align:right;white-space:nowrap"><span class="num">${fmt(s.amount)}</span> <button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></div></div>`;}).join('')||'<div class="empty">No recurring subscriptions.</div>');
   main.appendChild(c);
   const pc=el('div','card');pc.style.marginTop='16px';
   pc.innerHTML=`<div class="sectit" style="margin:0 0 4px">Pay as you go</div>
@@ -1175,20 +1167,19 @@ function vSubs(){
 }
 function addSub(){
   const cardOpts=DB.cards.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
-  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
   modal('Add subscription',`
   <div class="field"><label>Name</label><input id="sn"></div>
-  <div class="field"><label>Billing</label><select id="sf" onchange="document.getElementById('subWhen').style.display=this.value==='payg'?'none':'block'">
+  <div class="field"><label>Billing</label><select id="sf" onchange="document.getElementById('subWhen').style.display=this.value==='yearly'?'block':'none'">
     <option value="monthly">Monthly (fixed)</option><option value="yearly">Yearly (fixed)</option><option value="payg">Pay as you go</option></select></div>
   <div class="field"><label>Amount ₹ <span class="muted" style="font-weight:400">(typical, for pay-as-you-go)</span></label><input id="sa" type="number"></div>
-  <div id="subWhen">
-    <div class="row"><div class="field"><label>Day (1-31)</label><input id="sday" type="number" min="1" max="31" placeholder="5"></div>
-    <div class="field"><label>Month (yearly)</label><select id="smon"><option value="0">—</option>${months.map((mn,i)=>`<option value="${i+1}">${mn}</option>`).join('')}</select></div></div>
+  <div id="subWhen" style="display:none">
+    <div class="field"><label>Billed in which month?</label><select id="smon"><option value="0">—</option>${months.map((mn,i)=>`<option value="${i+1}">${mn}</option>`).join('')}</select></div>
   </div>
   <div class="field"><label>Paid with</label><select id="sc">${cardOpts}<option value="Debit card">Debit card</option><option value="UPI / Bank">UPI / Bank auto-debit</option><option value="">Other</option></select></div>
   <div class="field"><label>Scope</label><select id="ss"><option value="business">Business</option><option value="personal">Personal</option></select></div>
   <button class="btn gold" style="width:100%" onclick="saveSub()">Save</button>`);}
-function saveSub(){DB.subs.push({id:uid(),name:$('#sn').value||'Sub',amount:+$('#sa').value||0,freq:$('#sf').value,day:+$('#sday').value||1,month:+$('#smon').value||0,card:$('#sc').value||'',scope:$('#ss').value});save();closeModal();render();}
+function saveSub(){const f=$('#sf').value;DB.subs.push({id:uid(),name:$('#sn').value||'Sub',amount:+$('#sa').value||0,freq:f,day:1,month:f==='yearly'?(+$('#smon').value||1):0,card:$('#sc').value||'',scope:$('#ss').value});save();closeModal();render();}
 function delSub(id){DB.subs=DB.subs.filter(s=>s.id!==id);save();render();}
 function paygCharge(id){const s=DB.subs.find(x=>x.id===id);if(!s)return;
   modal('Log a charge — '+s.name,`
@@ -1437,8 +1428,9 @@ function vStatement(){
 
 /* ---- CHITS (recurring contribution + payout) ---- */
 function chitMonthsPaid(c){
-  if(!c.start)return 0;const parts=c.start.split('-').map(Number);const now=new Date();
+  if(!c.start)return 0;const parts=c.start.split('-').map(Number);const now=new Date();const day=c.day||1;
   let n=(now.getFullYear()-parts[0])*12+(now.getMonth()+1-parts[1])+1;
+  if(now.getDate()<day)n-=1;   // this month's instalment isn't due yet
   return Math.max(0,Math.min(c.tenure||0,n));
 }
 function chitDone(c){return chitMonthsPaid(c)>=(c.tenure||0);}
@@ -1492,12 +1484,8 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
- {v:'1.19.3',notes:['Update notification is now a small white pill in the top-right corner — tap it to refresh, or × to dismiss.']},
- {v:'1.19.2',notes:['Login Vault no longer scrolls the whole page — the list fills the screen and scrolls internally, keeping the search bar and buttons always visible.']},
- {v:'1.19.1',notes:['Vault first-time setup now shows a proper welcome screen with a "Set up" button instead of jumping straight to a keypad. "Forgot PIN?" no longer shows a scary browser dialog — it opens a clear in-app sheet explaining your options.']},
- {v:'1.19.0',notes:['<b>4-digit PIN keypad everywhere</b> — App Lock, Card Vault, and Login Vault all use a numeric dial pad. No keyboard, no typing — just tap 4 digits and you\'re in. PINs auto-submit on the 4th digit.']},
- {v:'1.18.2',notes:['When a new version is ready, a gold banner slides up from the bottom — tap <b>Update now</b> to reload instantly, or dismiss it and update later.']},
- {v:'1.18.1',notes:['Maintenance release — service worker cache refreshed and version bumped to ensure all devices pull the latest build.']},
+ {v:'1.18.2',notes:['Fixed chit instalment count — a chit no longer shows the current month as paid until its pay-day actually arrives (e.g. a chit due on the 25th stays uncounted until the 25th).']},
+ {v:'1.18.0',notes:['<b>Passcode keypad</b> — App Lock and the Card / Login vaults now use an iPhone / UPI-style number pad with dots. (Vaults keep a “use letters / password” option for older passwords.)','<b>Much easier Card Vault</b> — a live card preview, card number that auto-spaces every 4 digits, expiry that auto-formats to MM/YY, a network <b>picker</b> (Visa / Mastercard / Amex / RuPay / Diners…), and a <b>📷 Scan card</b> button that reads the number &amp; expiry from a photo.','<b>Update button</b> — “⟳ Check for update” at the bottom of the menu force-loads the newest version, and a banner offers to update when a new one is found.']},
  {v:'1.17.2',notes:['Swiping back (or the system back gesture) no longer closes the app. It now closes an open dialog or the menu, or returns you to Home — so you won’t lose your place by accident. To actually exit, use your phone’s app switcher.']},
  {v:'1.17.0',notes:['<b>Due-date reminders</b> — in Cash-Flow Forecast, tap “⏰ Add reminders to calendar” and Atlas drops all your chits, EMIs, card bills, subscriptions and renewals into your phone calendar, each with alerts <b>2 days before, 1 day before, and on the day</b>. Your calendar then notifies you even when Atlas is closed.']},
  {v:'1.16.0',notes:['<b>Swipe from the left edge</b> to open the menu (and swipe left to close it). The browser’s back-swipe is disabled so it won’t leave the app.']},
@@ -2102,211 +2090,112 @@ async function bioUnlock(){
     return true;
   }catch(e){return false;}
 }
-/* ── Numeric keypad engine ── */
-const _np={};
-function npHTML(id){
-  return `<div class="numpad">
-    <div class="np-dots" id="npd_${id}"><span>○</span><span>○</span><span>○</span><span>○</span></div>
-    <div class="np-grid">
-      ${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="np-key" onclick="npPush('${id}',${n})">${n}</button>`).join('')}
-      <button class="np-key np-blank"></button>
-      <button class="np-key" onclick="npPush('${id}',0)">0</button>
-      <button class="np-key np-del" onclick="npPop('${id}')">⌫</button>
-    </div>
-  </div>`;}
-function npPush(id,d){
-  const s=_np[id]||'';if(s.length>=4)return;
-  _np[id]=s+d;npDraw(id);
-  if(_np[id].length===4)setTimeout(()=>npSubmit(id),130);}
-function npPop(id){_np[id]=(_np[id]||'').slice(0,-1);npDraw(id);}
-function npDraw(id){
-  const v=_np[id]||'';
-  const el=document.getElementById('npd_'+id);if(!el)return;
-  el.innerHTML=[0,1,2,3].map(i=>`<span class="${i<v.length?'np-on':''}">${i<v.length?'●':'○'}</span>`).join('');}
-function npVal(id){return _np[id]||'';}
-function npReset(id,errMsg){_np[id]='';npDraw(id);const e=document.getElementById('npe_'+id);if(e)e.textContent=errMsg||'';}
-function npErr(id,msg){const e=document.getElementById('npe_'+id);if(e)e.textContent=msg;}
-function npErrHTML(id){return `<div class="np-err" id="npe_${id}"></div>`;}
-function npSubmit(id){
-  if(id==='lock')  tryPin();
-  else if(id==='pcur') _verifyCurPin();
-  else if(id==='pnew') _showConfirmPin();
-  else if(id==='pconf') _savePin();
-  else if(id==='vault') doUnlock();
-  else if(id==='vnew')  _vaultConfirmStep();
-  else if(id==='vconf') _vaultCreate();
-}
-
 let APP_UNLOCKED=false,bioBusy=false;
+/* ---- passcode keypad core (UPI / iOS style) ---- */
+let PIN_BUF='', PAD_ON=null, PAD_DOTS='padDots', PAD_MIN=4;
+function keypadHTML(bottomLeft){
+  const keys=[1,2,3,4,5,6,7,8,9];
+  let g=keys.map(k=>`<div class="key" onclick="padPress('${k}')">${k}</div>`).join('');
+  g+=(bottomLeft||'<div class="key blank"></div>');
+  g+=`<div class="key" onclick="padPress('0')">0</div>`;
+  g+=`<div class="key fn" onclick="padBack()">⌫</div>`;
+  return `<div class="pindots" id="${PAD_DOTS}"><div class="pindot"></div><div class="pindot"></div><div class="pindot"></div><div class="pindot"></div></div><div class="keypad">${g}</div>`;
+}
+function padRender(){const c=document.getElementById(PAD_DOTS);if(!c)return;let s='';const n=PIN_BUF.length;if(!n){s='<div class="pindot"></div>'.repeat(4);}else{for(let i=0;i<n;i++)s+='<div class="pindot on"></div>';}c.innerHTML=s;}
+function padPress(d){if(PIN_BUF.length>=10)return;PIN_BUF+=d;padRender();if(PAD_ON)PAD_ON(d);}
+function padBack(){PIN_BUF=PIN_BUF.slice(0,-1);padRender();}
+function padShake(){['.keypad','#'+PAD_DOTS].forEach(sel=>{const x=document.querySelector(sel);if(x){x.classList.remove('shake');void x.offsetWidth;x.classList.add('shake');}});}
+
 function showAppLock(){
   if($('#applock'))return;
-  npReset('lock');
+  PIN_BUF='';PAD_ON=padLockCheck;PAD_DOTS='padDots';
+  const bio=DB.meta.bioCredId&&bioSupported();
   const d=document.createElement('div');d.id='applock';
   d.style.cssText='position:fixed;inset:0;z-index:100000;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px';
-  const bio=DB.meta.bioCredId&&bioSupported();
-  if(bio){
-    d.innerHTML=`<div class="card" style="max-width:340px;width:100%;text-align:center;padding:28px 24px">
-      <div id="bioIcon" style="font-size:52px;margin-bottom:6px;cursor:pointer" onclick="tryBio(false)">☝</div>
-      <h3 style="font-family:var(--serif);font-size:22px">Atlas locked</h3>
-      <p id="lockMsg" class="muted" style="margin:6px 0 20px;font-size:13px">Tap to unlock with fingerprint</p>
-      <button id="bioBtn" class="btn gold" style="width:100%" onclick="tryBio(false)">☝ Unlock with fingerprint</button>
-      <div id="pinArea" style="display:none;margin-top:20px">${npHTML('lock')}${npErrHTML('lock')}</div>
-      <p id="pinSwitch" class="muted" style="font-size:12px;margin-top:18px;cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="showPinArea()">Use PIN instead</p>
-    </div>`;
-    document.body.appendChild(d);
-    setTimeout(()=>tryBio(true),200);
-  }else{
-    d.innerHTML=`<div class="card" style="max-width:340px;width:100%;text-align:center;padding:28px 24px">
-      <div style="font-size:40px;margin-bottom:10px">⚷</div>
-      <h3 style="font-family:var(--serif);font-size:22px">Atlas locked</h3>
-      <p class="muted" style="margin:6px 0 22px;font-size:13px">Enter your 4-digit PIN</p>
-      ${npHTML('lock')}
-      ${npErrHTML('lock')}
-    </div>`;
-    document.body.appendChild(d);
-  }
+  const bl=bio?`<div class="key fn" onclick="tryBio(false)">☝</div>`:'<div class="key blank"></div>';
+  d.innerHTML=`<div class="card" style="max-width:340px;width:100%;text-align:center">
+     <div style="font-size:30px;margin-bottom:2px">⚷</div>
+     <h3 style="font-family:var(--serif);font-size:21px">Atlas locked</h3>
+     <p id="lockMsg" class="muted" style="margin:6px 0 0;font-size:12.5px">Enter your passcode</p>
+     ${keypadHTML(bl)}
+     <p id="pinErr" style="font-size:11.5px;margin-top:12px;color:var(--red);min-height:14px"></p>
+  </div>`;
+  document.body.appendChild(d);padRender();
+  if(bio)setTimeout(()=>tryBio(true),200);
 }
-function showPinArea(){
-  const pa=$('#pinArea');if(pa)pa.style.display='block';
-  const sw=$('#pinSwitch');if(sw)sw.style.display='none';
+async function padLockCheck(){
+  if(PIN_BUF.length<PAD_MIN)return;
+  const h=await sha256(PIN_BUF);
+  if(h===DB.meta.pinHash){APP_UNLOCKED=true;try{sessionStorage.setItem('atlasUnlocked','1');}catch(e){}PIN_BUF='';const d=$('#applock');if(d)d.remove();return;}
+  if(PIN_BUF.length>=8){padShake();PIN_BUF='';padRender();const e=$('#pinErr');if(e)e.textContent='Wrong passcode';}
 }
+function showPinArea(){}
 async function tryBio(auto){
-  if(bioBusy)return;bioBusy=true;
-  const msg=$('#lockMsg');if(msg&&!auto)msg.textContent='Authenticating with fingerprint…';
-  let ok=false;
+  if(bioBusy)return;bioBusy=true;let ok=false;
   try{ok=await bioUnlock();}finally{bioBusy=false;}
-  if(ok){APP_UNLOCKED=true;try{sessionStorage.setItem('atlasUnlocked','1');}catch(e){}const d=$('#applock');if(d)d.remove();return;}
-  if(auto){
-    if(msg)msg.textContent='Tap to unlock with fingerprint';
-  }else{
-    if(msg)msg.textContent='Fingerprint failed — use your PIN.';
-    showPinArea();
-  }
+  if(ok){APP_UNLOCKED=true;try{sessionStorage.setItem('atlasUnlocked','1');}catch(e){}PIN_BUF='';const d=$('#applock');if(d)d.remove();return;}
+  const msg=$('#lockMsg');if(msg)msg.textContent=auto?'Enter your passcode':'Fingerprint didn’t work — enter your passcode';
 }
-async function tryPin(){
-  const v=npVal('lock');
-  const h=await sha256(v);
-  if(h===DB.meta.pinHash){
-    APP_UNLOCKED=true;
-    try{sessionStorage.setItem('atlasUnlocked','1');}catch(e){}
-    const d=$('#applock');if(d)d.remove();
-  }else{
-    npReset('lock','Wrong PIN — try again');
-  }
-}
+async function tryPin(){await padLockCheck();}
 function appLockSettings(){
   const has=!!(DB.meta&&DB.meta.pinHash);
   const bioOn=!!(DB.meta&&DB.meta.bioCredId);
-  if(has){
-    npReset('pcur');
-    modal('App Lock',`
-      <p class="np-label" style="margin-bottom:14px">Enter your current PIN</p>
-      ${npHTML('pcur')}${npErrHTML('pcur')}
-      <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px;display:flex;flex-direction:column;gap:10px">
-        ${bioSupported()?(bioOn
-          ?`<button class="btn" style="width:100%" onclick="bioDisable()">Turn off fingerprint</button>`
-          :`<button class="btn" style="width:100%" onclick="bioRegister()">☝ Enable fingerprint unlock</button>`):''}
-        <button class="btn danger" style="width:100%" onclick="_pinVerifiedRemove()">Remove PIN</button>
-      </div>`);
-  }else{
-    _showSetPin(false);
-  }
+  modal('App Lock',`
+   <p class="muted" style="font-size:12.5px;margin-bottom:14px">${has?'A PIN is set — Atlas asks for it each time you open the app.':'Set a numeric PIN to lock the whole app on open. This is a privacy lock, not full encryption — your Card &amp; Login vaults stay separately AES-encrypted.'}</p>
+   ${has?`<div class="field"><label>Current PIN</label><input id="pinCur" type="password" inputmode="numeric"></div>`:''}
+   <div class="field"><label>${has?'New PIN':'PIN'} (4–8 digits${has?', blank to remove':''})</label><input id="pinNew" type="password" inputmode="numeric"></div>
+   <button class="btn gold" style="width:100%" onclick="savePin(${has})">Save PIN</button>
+   ${has&&bioSupported()?`<div style="border-top:1px solid var(--line);margin:16px 0 0;padding-top:16px">${bioOn?`<p class="muted" style="font-size:12.5px;margin-bottom:10px">Fingerprint unlock is on.</p><button class="btn danger" style="width:100%" onclick="bioDisable()">Turn off fingerprint</button>`:`<p class="muted" style="font-size:12.5px;margin-bottom:10px">Use your device fingerprint/Face to unlock (PIN still works as backup).</p><button class="btn" style="width:100%" onclick="bioRegister()">☝ Enable fingerprint unlock</button>`}</div>`:has?'':''}`);
 }
 function bioDisable(){DB.meta.bioCredId=null;save();closeModal();toast('Fingerprint unlock off');}
-/* called by npSubmit when id==='pcur' */
-async function _verifyCurPin(){
-  const h=await sha256(npVal('pcur'));
-  if(h!==DB.meta.pinHash){npReset('pcur','Wrong PIN — try again');return;}
-  _showSetPin(true);
-}
-async function _pinVerifiedRemove(){
-  /* require current PIN first */
-  const v=npVal('pcur');
-  if(v.length<4){npErr('pcur','Enter your current PIN first');return;}
-  const h=await sha256(v);
-  if(h!==DB.meta.pinHash){npReset('pcur','Wrong PIN — try again');return;}
-  DB.meta.pinHash=null;DB.meta.bioCredId=null;save();closeModal();toast('App lock removed');
-}
-function _showSetPin(isChange){
-  npReset('pnew');
-  modal(isChange?'New PIN':'Set PIN',`
-    <p class="np-label" style="margin-bottom:14px">${isChange?'Enter your new 4-digit PIN':'Choose a 4-digit PIN'}</p>
-    ${npHTML('pnew')}${npErrHTML('pnew')}`);
-}
-function _showConfirmPin(){
-  npReset('pconf');
-  modal('Confirm PIN',`
-    <p class="np-label" style="margin-bottom:14px">Enter the same PIN again</p>
-    ${npHTML('pconf')}${npErrHTML('pconf')}`);
-}
-async function _savePin(){
-  const np=npVal('pnew'),nc=npVal('pconf');
-  if(np!==nc){npReset('pconf','PINs do not match — try again');return;}
+async function savePin(has){
+  if(has){const cur=await sha256($('#pinCur').value||'');if(cur!==DB.meta.pinHash){toast('Current PIN is wrong');return;}}
+  const np=($('#pinNew').value||'').trim();
+  if(!np){if(has){DB.meta.pinHash=null;DB.meta.bioCredId=null;save();closeModal();toast('App lock removed');}else closeModal();return;}
+  if(!/^\d{4,8}$/.test(np)){toast('Use 4–8 digits');return;}
   DB.meta.pinHash=await sha256(np);save();closeModal();toast('App lock set');
 }
 
 /* ============================================================
    VAULT VIEWS
    ============================================================ */
-let _vaultPinNew='';
-function lockScreen(title){
-  if(!DB.vaultEnc){
-    // First time — show a setup welcome card, not a lock screen
-    return `<div class="lockwrap card" style="text-align:center;padding:32px 24px">
-      <div style="font-size:48px;margin-bottom:12px">⚿</div>
-      <h3 style="font-family:var(--serif);font-size:22px">${title}</h3>
-      <p class="muted" style="margin:10px 0 24px;font-size:13px;line-height:1.6">Your ${title.replace(' Vault','')} entries are <b style="color:var(--gold2)">AES-256 encrypted</b> on-device.<br>Set a 4-digit PIN — only you know it.</p>
-      <button class="btn gold" style="width:100%" onclick="_startVaultSetup()">Set up ${title}</button>
-      <p class="muted" style="font-size:11px;margin-top:16px">Encrypted before it ever touches storage · never sent anywhere</p>
-    </div>`;
-  }
-  // Existing vault — show PIN entry
-  npReset('vault');
-  return `<div class="lockwrap card" style="text-align:center;padding:28px 24px" id="lockScreenWrap">
-    <div style="font-size:40px;margin-bottom:10px">⚿</div>
-    <h3 style="font-family:var(--serif);font-size:22px">${title}</h3>
-    <p class="muted" style="margin:6px 0 22px;font-size:13px">Enter your 4-digit vault PIN</p>
-    ${npHTML('vault')}
-    ${npErrHTML('vault')}
-    <p style="font-size:12px;margin-top:20px;color:var(--muted);cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="_forgotVaultPin()">Forgot PIN?</p>
+let VPASS_PHASE=0,VPASS_FIRST='';
+function lockScreen(title,sub){
+  const first=!DB.vaultEnc;
+  PIN_BUF='';PAD_ON=null;PAD_DOTS='vpDots';VPASS_PHASE=0;VPASS_FIRST='';
+  const bl=`<div class="key fn" style="color:var(--gold)" onclick="vaultPadSubmit()">✓</div>`;
+  return `<div class="lockwrap card" style="text-align:center;max-width:360px;margin:0 auto">
+    <div style="font-size:34px;margin-bottom:4px">⚿</div>
+    <h3 style="font-family:var(--serif);font-size:23px">${title}</h3>
+    <p id="vpMsg" class="muted" style="margin:6px 0 0;font-size:12.5px">${first?'Create a passcode to encrypt the vault':'Enter your passcode to unlock'}</p>
+    <div id="vpKeypad">${keypadHTML(bl)}</div>
+    <div id="vpKbd" style="display:none;margin-top:6px">
+      <input id="mpw" type="password" placeholder="Master password" onkeydown="if(event.key==='Enter')doUnlock()" style="text-align:center">
+      ${first?'<input id="mpw2" type="password" placeholder="Confirm password" style="text-align:center;margin-top:10px">':''}
+      <button class="btn gold" style="width:100%;margin-top:12px" onclick="doUnlock()">${first?'Create vault':'Unlock'}</button>
+    </div>
+    <p class="muted" id="vpToggle" style="font-size:11.5px;margin-top:16px;cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="vaultToggleKbd()">Use letters / password instead</p>
+    <p class="muted" style="font-size:10.5px;margin-top:12px;opacity:.7">AES-256-GCM · PBKDF2 250k · ${first?'never stored, cannot be recovered':'encrypted on this device'}</p>
   </div>`;
 }
-function _startVaultSetup(){
-  npReset('vnew');
-  modal('Create vault PIN',`
-    <p class="np-label" style="margin-bottom:14px">Choose a 4-digit PIN for your vault</p>
-    ${npHTML('vnew')}${npErrHTML('vnew')}`);
-}
-function _forgotVaultPin(){
-  modal('Forgot vault PIN',`
-    <p class="muted" style="font-size:13px;line-height:1.6;margin-bottom:20px">
-      Your vault is AES-encrypted with your PIN. Without the PIN, the data cannot be decrypted — this is by design.<br><br>
-      <b style="color:var(--gold2)">Resetting</b> clears the encrypted data so you can create a new PIN and start fresh.
-    </p>
-    <button class="btn danger" style="width:100%" onclick="_doResetVault()">Reset vault &amp; start fresh</button>
-    <button class="btn" style="width:100%;margin-top:10px" onclick="closeModal()">Cancel — try PIN again</button>`);
-}
-function _doResetVault(){
-  DB.vaultEnc=null;VAULT={cards:[],logins:[]};MASTER_KEY=null;save();closeModal();render();toast('Vault reset — set a new PIN to get started');
+function vaultToggleKbd(){const k=$('#vpKeypad'),b=$('#vpKbd'),t=$('#vpToggle');if(!k||!b)return;const toKbd=b.style.display==='none';b.style.display=toKbd?'block':'none';k.style.display=toKbd?'none':'block';if(t)t.textContent=toKbd?'Use number passcode instead':'Use letters / password instead';if(toKbd){const i=$('#mpw');if(i)setTimeout(()=>i.focus(),50);}}
+async function vaultPadSubmit(){
+  if(PIN_BUF.length<4){const m=$('#vpMsg');if(m)m.textContent='Enter at least 4 digits';padShake();return;}
+  const first=!DB.vaultEnc;
+  if(first){
+    if(VPASS_PHASE===0){VPASS_FIRST=PIN_BUF;PIN_BUF='';padRender();VPASS_PHASE=1;const m=$('#vpMsg');if(m)m.textContent='Enter the passcode again to confirm';return;}
+    if(PIN_BUF!==VPASS_FIRST){padShake();PIN_BUF='';padRender();VPASS_PHASE=0;VPASS_FIRST='';const m=$('#vpMsg');if(m)m.textContent='Didn’t match — create a passcode';return;}
+    const ok=await unlockVault(PIN_BUF);PIN_BUF='';if(ok){resetIdle();render();toast('Vault created & encrypted');}return;
+  }
+  const ok=await unlockVault(PIN_BUF);
+  if(ok){PIN_BUF='';resetIdle();render();toast('Vault unlocked');}
+  else{padShake();PIN_BUF='';padRender();const m=$('#vpMsg');if(m)m.textContent='Wrong passcode';}
 }
 async function doUnlock(){
-  const pw=npVal('vault');
+  const pw=$('#mpw').value;if(!pw){toast('Enter a password');return;}
+  if(!DB.vaultEnc){const c=$('#mpw2');if(c&&c.value!==pw){toast('Passwords do not match');return;}if(pw.length<6){toast('Use at least 6 characters');return;}}
   const ok=await unlockVault(pw);
-  if(ok){resetIdle();render();toast('Vault unlocked');}
-  else{npReset('vault','Wrong PIN — try again');}
-}
-function _vaultConfirmStep(){
-  _vaultPinNew=npVal('vnew');
-  npReset('vconf');
-  modal('Confirm vault PIN',`
-    <p class="np-label" style="margin-bottom:14px">Enter the same PIN again</p>
-    ${npHTML('vconf')}${npErrHTML('vconf')}`);
-}
-async function _vaultCreate(){
-  const pw=npVal('vconf');
-  if(pw!==_vaultPinNew){npReset('vconf','PINs do not match — try again');return;}
-  const ok=await unlockVault(pw);
-  if(ok){resetIdle();render();toast('Vault created');}
+  if(ok){resetIdle();render();toast('Vault unlocked');}else toast('Wrong password');
 }
 function vaultBar(){
   const mins=+(localStorage.getItem('atlasAutoLock')||0);
@@ -2334,28 +2223,77 @@ function vCardVault(){
   </div>`).join('')||'<div class="empty">No cards stored.</div>';
   main.appendChild(g);
 }
-function addVCard(){modal('Add card (encrypted)',`
-  <div class="field"><label>Bank / name</label><input id="vb_bank"></div>
-  <div class="field"><label>Card number</label><input id="vb_num" placeholder="1234 5678 9012 3456"></div>
-  <div class="row"><div class="field"><label>Holder</label><input id="vb_hold"></div>
-  <div class="field"><label>Network</label><input id="vb_net" placeholder="Visa / Amex"></div></div>
-  <div class="row"><div class="field"><label>Expiry</label><input id="vb_exp" placeholder="MM/YY"></div>
-  <div class="field"><label>CVV (free text / letter code)</label><input id="vb_cvv"></div></div>
-  <button class="btn gold" style="width:100%" onclick="saveVCard()">Encrypt &amp; save</button>`);}
-async function saveVCard(){VAULT.cards.push({bank:$('#vb_bank').value,number:$('#vb_num').value,holder:$('#vb_hold').value,network:$('#vb_net').value,expiry:$('#vb_exp').value,cvv:$('#vb_cvv').value});await encryptVault();closeModal();render();toast('Encrypted &amp; saved');}
+const CARD_NETS=['Visa','Mastercard','Amex','RuPay','Diners Club','Discover','Other'];
+function netOpts(sel){return '<option value="">Select…</option>'+CARD_NETS.map(n=>`<option value="${n}" ${n===sel?'selected':''}>${n}</option>`).join('');}
+function detectNet(num){const n=(num||'').replace(/\D/g,'');if(/^4/.test(n))return'Visa';if(/^3[47]/.test(n))return'Amex';if(/^5[1-5]/.test(n)||/^2[2-7]/.test(n))return'Mastercard';if(/^(60|65|81|82|508)/.test(n))return'RuPay';if(/^3(0[0-5]|[68])/.test(n))return'Diners Club';if(/^6011|^64|^65/.test(n))return'Discover';return'';}
+function fmtCardNum(elm){const v=elm.value.replace(/\D/g,'').slice(0,19);elm.value=v.replace(/(.{4})/g,'$1 ').trim();}
+function fmtExpiry(elm){let v=elm.value.replace(/\D/g,'').slice(0,4);if(v.length>=3)v=v.slice(0,2)+'/'+v.slice(2);elm.value=v;}
+function cardPrevUpd(){const p=$('#cardPrev');if(!p)return;
+  const numEl=$('#vb_num'),netEl=$('#vb_net');
+  const numRaw=numEl?numEl.value:'';
+  if(netEl&&!netEl.dataset.touched){const dn=detectNet(numRaw);if(dn)netEl.value=dn;}
+  const num=numRaw||'•••• •••• •••• ••••';
+  const exp=($('#vb_exp')&&$('#vb_exp').value)||'MM/YY';
+  const hold=($('#vb_hold')&&$('#vb_hold').value)||'CARDHOLDER';
+  const bank=($('#vb_bank')&&$('#vb_bank').value)||'';
+  const net=netEl?netEl.value:'';
+  p.innerHTML=`<div class="pv-net">${[bank,net].filter(Boolean).join(' · ')||'&nbsp;'}</div>
+    <div class="pv-num">${num}</div>
+    <div class="pv-row"><div><div class="k">CARDHOLDER</div><div class="v">${hold.toUpperCase()}</div></div>
+    <div><div class="k">EXPIRES</div><div class="v">${exp}</div></div></div>`;
+}
+function addVCard(){modal('Add card',`
+  <div id="cardPrev" class="vcard-prev"></div>
+  <button class="btn" style="width:100%;margin-bottom:6px" onclick="scanCard()">📷 Scan card with camera</button>
+  <div id="scanMsg" class="muted" style="font-size:11.5px;text-align:center;min-height:15px;margin-bottom:8px"></div>
+  <div class="field"><label>Card number</label><input id="vb_num" inputmode="numeric" autocomplete="off" placeholder="1234 5678 9012 3456" oninput="fmtCardNum(this);cardPrevUpd()"></div>
+  <div class="row">
+    <div class="field"><label>Expiry</label><input id="vb_exp" inputmode="numeric" autocomplete="off" placeholder="MM/YY" oninput="fmtExpiry(this);cardPrevUpd()"></div>
+    <div class="field"><label>CVV</label><input id="vb_cvv" inputmode="numeric" autocomplete="off" placeholder="•••" maxlength="4"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Network</label><select id="vb_net" onchange="this.dataset.touched=1;cardPrevUpd()">${netOpts('')}</select></div>
+    <div class="field"><label>Bank / name</label><input id="vb_bank" oninput="cardPrevUpd()" placeholder="HDFC, ICICI…"></div>
+  </div>
+  <div class="field"><label>Cardholder name</label><input id="vb_hold" autocomplete="off" oninput="cardPrevUpd()" placeholder="Name on card"></div>
+  <button class="btn gold" style="width:100%" onclick="saveVCard()">🔒 Encrypt &amp; save</button>`);
+  setTimeout(cardPrevUpd,0);
+}
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.body.appendChild(s);});}
+function scanCard(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.setAttribute('capture','environment');
+  inp.onchange=()=>{const f=inp.files&&inp.files[0];if(f)ocrCard(f);};
+  inp.click();
+}
+async function ocrCard(file){
+  const msg=$('#scanMsg');if(msg)msg.textContent='Reading card… (first scan downloads the reader)';
+  try{
+    if(!window.Tesseract)await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+    const{data}=await Tesseract.recognize(file,'eng');
+    const text=((data&&data.text)||'').replace(/[\n\r]+/g,' ');
+    const num=((text.match(/\d[\d ]{12,21}\d/)||[''])[0]).replace(/\D/g,'');
+    const exp=((text.match(/(0[1-9]|1[0-2])\s*\/\s*\d{2}/)||[''])[0]).replace(/\s/g,'');
+    let got=[];
+    if(num&&num.length>=12){const ci=$('#vb_num');if(ci){ci.value=num.replace(/(.{4})/g,'$1 ').trim();}const net=detectNet(num);const s=$('#vb_net');if(net&&s&&!s.dataset.touched)s.value=net;got.push('number');}
+    if(exp){const ei=$('#vb_exp');if(ei)ei.value=exp;got.push('expiry');}
+    cardPrevUpd();
+    if(msg)msg.textContent=got.length?('Read '+got.join(' & ')+' — please double-check before saving'):'Couldn’t read it clearly — please enter manually';
+  }catch(e){if(msg)msg.textContent='Scanner needs internet the first time — or just enter manually';}
+}
+async function saveVCard(){
+  const num=($('#vb_num').value||'').trim();
+  VAULT.cards.push({bank:$('#vb_bank').value,number:num,holder:$('#vb_hold').value,network:$('#vb_net').value,expiry:$('#vb_exp').value,cvv:$('#vb_cvv').value});
+  await encryptVault();closeModal();render();toast('Encrypted & saved');
+}
 async function delVCard(i){VAULT.cards.splice(i,1);await encryptVault();render();}
 
 function vLoginVault(){
   const main=$('#main');
   if(!MASTER_KEY){main.innerHTML=header('Login Vault','Encrypted password manager','')+lockScreen('Login Vault');return;}
-  // Full-height flex layout so the list scrolls internally and the page never scrolls
-  main.style.cssText='display:flex;flex-direction:column;height:100vh;overflow:hidden;padding:0;max-width:none;margin:0';
-  const hdr=el('div');hdr.style.cssText='padding:28px 32px 0;flex-shrink:0';
-  hdr.innerHTML=header('Login Vault','AES-encrypted · '+VAULT.logins.length+' logins',vaultBar());
-  const ctrl=el('div');ctrl.style.cssText='padding:14px 32px;flex-shrink:0';
-  ctrl.innerHTML=`<div class="row"><input id="lvSearch" placeholder="Search logins…" oninput="renderLogins()"><button class="btn gold" onclick="addLogin()" style="flex:0 0 auto">+ Add</button><button class="btn" onclick="pwHealth()" style="flex:0 0 auto">⚕ Health check</button></div>`;
-  const list=el('div');list.id='loginList';list.style.cssText='flex:1;overflow-y:auto;padding:0 32px 32px';
-  main.appendChild(hdr);main.appendChild(ctrl);main.appendChild(list);
+  main.innerHTML=header('Login Vault','AES-encrypted · '+VAULT.logins.length+' logins',vaultBar());
+  const ctrl=el('div');ctrl.innerHTML=`<div class="row"><input id="lvSearch" placeholder="Search logins…" oninput="renderLogins()"><button class="btn gold" onclick="addLogin()" style="flex:0 0 auto">+ Add</button><button class="btn" onclick="pwHealth()" style="flex:0 0 auto">⚕ Health check</button></div>`;
+  main.appendChild(ctrl);
+  const list=el('div');list.id='loginList';list.style.marginTop='16px';main.appendChild(list);
   renderLogins();
 }
 function renderLogins(){
@@ -2434,7 +2372,7 @@ function saveIncome(){
    ============================================================ */
 function modal(title,body){$('#modal').innerHTML=`<span class="x" onclick="closeModal()">×</span><h3>${title}</h3><div style="margin-top:16px">${body}</div>`;$('#modalBg').classList.add('on');}
 function closeModal(){$('#modalBg').classList.remove('on');}
-$('#modalBg').addEventListener('click',e=>{if(e.target===$('#modalBg'))closeModal();});
+/* modal closes only via the × button — a mis-tap on the backdrop never discards what you typed */
 
 function go(v){
   document.body.dataset.view=v;
@@ -2468,25 +2406,20 @@ function toggleNav(forceClose){const s=$('#side'),sc=$('#scrim');const open=forc
 })();
 /* back-gesture trap: edge-swipe / system back is consumed inside the app instead of closing it */
 (function(){
-  let exitArmed=false,exitTimer=null;
-  function pushTrap(){try{history.pushState({atlas:1},'');}catch(e){}}
-  pushTrap();
+  let armed=false,timer=null;
+  function trap(){try{history.pushState({atlas:Date.now()},'',location.href);}catch(e){}}
+  trap();
+  window.addEventListener('pageshow',function(ev){if(ev.persisted)trap();});
+  // make sure a buffer entry exists right before any swipe can complete
+  document.addEventListener('touchstart',function(){if(!history.state||!history.state.atlas)trap();},{passive:true});
   window.addEventListener('popstate',function(){
-    if($('#applock')){pushTrap();exitArmed=false;return;}
-    if($('#modalBg')&&$('#modalBg').classList.contains('on')){closeModal();pushTrap();exitArmed=false;return;}
-    const s=$('#side');if(s&&s.classList.contains('open')){toggleNav(true);pushTrap();exitArmed=false;return;}
+    if($('#applock')){trap();armed=false;return;}
+    if($('#modalBg')&&$('#modalBg').classList.contains('on')){closeModal();trap();armed=false;return;}
+    const s=$('#side');if(s&&s.classList.contains('open')){toggleNav(true);trap();armed=false;return;}
     const v=document.body.dataset.view;
-    if(v&&v!=='home'){go('home');pushTrap();exitArmed=false;return;}
-    // Home, nothing open → swipe again to exit
-    if(!exitArmed){
-      exitArmed=true;toast('Swipe again to exit');
-      pushTrap();
-      clearTimeout(exitTimer);exitTimer=setTimeout(()=>{exitArmed=false;},2000);
-      return;
-    }
-    // second swipe within the window → let it leave (no re-trap)
-    exitArmed=false;
-    history.back();
+    if(v&&v!=='home'){go('home');trap();armed=false;return;}
+    if(!armed){armed=true;toast('Swipe again to exit');trap();clearTimeout(timer);timer=setTimeout(()=>{armed=false;},2000);return;}
+    armed=false;history.back();
   });
 })();
 
@@ -2526,30 +2459,47 @@ $('#fileIn').addEventListener('change',e=>{
   r.readAsText(f);e.target.value='';
 });
 
-/* PWA: register service worker + notify user when a new version is ready */
-const APP_VERSION='1.19.3';
-let _swWaiting=null;
-function doUpdate(){if(_swWaiting){_swWaiting.postMessage('SKIP_WAITING');}else{location.reload();}}
-function dismissUpdate(){document.getElementById('updateBanner').classList.remove('show');}
-function showUpdateBanner(){document.getElementById('updateBanner').classList.add('show');}
+/* PWA: register service worker + auto-refresh when a new version is deployed */
+const APP_VERSION='1.18.2';
+let _swReg=null;
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
-  let reg=null,reloaded=false;
-  function onWaiting(sw){_swWaiting=sw;showUpdateBanner();}
+  let reloaded=false;
   navigator.serviceWorker.register('sw.js').then(r=>{
-    reg=r;r.update();
-    if(r.waiting)onWaiting(r.waiting);
+    _swReg=r;r.update();
+    // a new worker is downloading → when it's ready, offer to update
     r.addEventListener('updatefound',()=>{
-      const sw=r.installing;
-      sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)onWaiting(sw);});
+      const nw=r.installing;if(!nw)return;
+      nw.addEventListener('statechange',()=>{
+        if(nw.state==='installed'&&navigator.serviceWorker.controller){showUpdateBar();}
+      });
     });
   }).catch(()=>{});
-  // reload once the new SW takes control (triggered after user taps "Update now")
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
     if(reloaded)return;reloaded=true;location.reload();
   });
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&reg)reg.update();});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&_swReg)_swReg.update();});
 })();
+function showUpdateBar(){
+  if($('#updbar'))return;
+  const b=document.createElement('div');b.id='updbar';
+  b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:99999;background:var(--gold);color:#1a1407;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;font-weight:600;box-shadow:0 -4px 20px rgba(0,0,0,.4)';
+  b.innerHTML=`<span>A new version of Atlas is ready.</span><button onclick="applyUpdate()" style="background:#1a1407;color:var(--gold);border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer">Update now</button>`;
+  document.body.appendChild(b);
+}
+function applyUpdate(){
+  const w=_swReg&&_swReg.waiting;
+  if(w){w.postMessage('skipWaiting');setTimeout(()=>location.reload(),300);}
+  else forceUpdate();
+}
+async function forceUpdate(){
+  toast('Checking for updates…');
+  try{if(_swReg){await _swReg.update();if(_swReg.waiting){_swReg.waiting.postMessage('skipWaiting');setTimeout(()=>location.reload(),400);return;}}}catch(e){}
+  // hard refresh: drop caches + re-fetch everything (your data in storage is untouched)
+  try{if(window.caches){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));}}catch(e){}
+  try{if('serviceWorker' in navigator){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()));}}catch(e){}
+  toast('Updating…');setTimeout(()=>location.reload(),500);
+}
 
 /* block long-press text-search / image-Lens menus on the UI (keep paste in fields) */
 document.addEventListener('contextmenu',function(e){if(!e.target.closest('input,textarea'))e.preventDefault();});
