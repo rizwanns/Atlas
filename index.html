@@ -544,7 +544,7 @@ const M=()=>metrics();
 
 function render(){
   const view=document.body.dataset.view||'overview';
-  $('#main').innerHTML='';
+  const m=$('#main');m.innerHTML='';m.removeAttribute('style');
   ({home:vHome,overview:vOverview,advisor:vAdvisor,debts:vDebts,owed:vDebts,statements:vDebts,statement:vDebts,person:vPerson,repay:vRepay,cards:vCards,subs:vSubs,
     networth:vNet,safety:vSafety,gold:vGold,chits:vChits,bizrep:vBizRep,compliance:vComp,zakat:vZakat,renewals:vRenew,goals:vGoals,calendar:vCal,vacation:vVac,garage:vGarage,lifestyle:vLife,
     cardvault:vCardVault,loginvault:vLoginVault}[view]||vHome)();
@@ -1495,6 +1495,7 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.19.2',notes:['Login Vault no longer scrolls the whole page — the list fills the screen and scrolls internally, keeping the search bar and buttons always visible.']},
  {v:'1.19.1',notes:['Vault first-time setup now shows a proper welcome screen with a "Set up" button instead of jumping straight to a keypad. "Forgot PIN?" no longer shows a scary browser dialog — it opens a clear in-app sheet explaining your options.']},
  {v:'1.19.0',notes:['<b>4-digit PIN keypad everywhere</b> — App Lock, Card Vault, and Login Vault all use a numeric dial pad. No keyboard, no typing — just tap 4 digits and you\'re in. PINs auto-submit on the 4th digit.']},
  {v:'1.18.2',notes:['When a new version is ready, a gold banner slides up from the bottom — tap <b>Update now</b> to reload instantly, or dismiss it and update later.']},
@@ -2349,10 +2350,14 @@ async function delVCard(i){VAULT.cards.splice(i,1);await encryptVault();render()
 function vLoginVault(){
   const main=$('#main');
   if(!MASTER_KEY){main.innerHTML=header('Login Vault','Encrypted password manager','')+lockScreen('Login Vault');return;}
-  main.innerHTML=header('Login Vault','AES-encrypted · '+VAULT.logins.length+' logins',vaultBar());
-  const ctrl=el('div');ctrl.innerHTML=`<div class="row"><input id="lvSearch" placeholder="Search logins…" oninput="renderLogins()"><button class="btn gold" onclick="addLogin()" style="flex:0 0 auto">+ Add</button><button class="btn" onclick="pwHealth()" style="flex:0 0 auto">⚕ Health check</button></div>`;
-  main.appendChild(ctrl);
-  const list=el('div');list.id='loginList';list.style.marginTop='16px';main.appendChild(list);
+  // Full-height flex layout so the list scrolls internally and the page never scrolls
+  main.style.cssText='display:flex;flex-direction:column;height:100vh;overflow:hidden;padding:0;max-width:none;margin:0';
+  const hdr=el('div');hdr.style.cssText='padding:28px 32px 0;flex-shrink:0';
+  hdr.innerHTML=header('Login Vault','AES-encrypted · '+VAULT.logins.length+' logins',vaultBar());
+  const ctrl=el('div');ctrl.style.cssText='padding:14px 32px;flex-shrink:0';
+  ctrl.innerHTML=`<div class="row"><input id="lvSearch" placeholder="Search logins…" oninput="renderLogins()"><button class="btn gold" onclick="addLogin()" style="flex:0 0 auto">+ Add</button><button class="btn" onclick="pwHealth()" style="flex:0 0 auto">⚕ Health check</button></div>`;
+  const list=el('div');list.id='loginList';list.style.cssText='flex:1;overflow-y:auto;padding:0 32px 32px';
+  main.appendChild(hdr);main.appendChild(ctrl);main.appendChild(list);
   renderLogins();
 }
 function renderLogins(){
@@ -2524,7 +2529,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + notify user when a new version is ready */
-const APP_VERSION='1.19.1';
+const APP_VERSION='1.19.2';
 let _swWaiting=null;
 function doUpdate(){if(_swWaiting){_swWaiting.postMessage('SKIP_WAITING');}else{location.reload();}}
 function dismissUpdate(){document.getElementById('updateBanner').classList.remove('show');}
