@@ -2,7 +2,7 @@
    network-first: always try the newest deploy, fall back to cache offline.
    skipWaiting + clients.claim => a new deploy activates immediately and the
    page reloads itself (via controllerchange) to show the new version. */
-const CACHE = 'atlas-cache-v36';
+const CACHE = 'atlas-cache-v37';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png'];
 
 self.addEventListener('install', e => {
@@ -16,6 +16,10 @@ self.addEventListener('activate', e => {
     await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
     await self.clients.claim();
   })());
+});
+
+self.addEventListener('message', e => {
+  if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', e => {

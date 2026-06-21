@@ -146,6 +146,13 @@ section.on{display:block}
 .copybtn{cursor:pointer;color:var(--gold);font-size:12px;font-weight:600;border:none;background:none;font-family:var(--sans)}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(40px);background:var(--card2);border:1px solid var(--line2);color:var(--txt);padding:12px 20px;border-radius:12px;font-size:13px;z-index:500;opacity:0;transition:.3s;pointer-events:none}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+#updateBanner{position:fixed;bottom:0;left:0;right:0;z-index:600;background:linear-gradient(135deg,#1a1508,#241d0a);border-top:1px solid var(--gold);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;transform:translateY(100%);transition:transform .35s cubic-bezier(.22,.68,0,1.2);pointer-events:none}
+#updateBanner.show{transform:translateY(0);pointer-events:auto}
+#updateBanner .ub-text{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;color:var(--gold2)}
+#updateBanner .ub-text svg{flex-shrink:0}
+#updateBanner .ub-sub{font-size:12px;color:var(--muted);font-weight:400;margin-top:2px}
+#updateBanner .ub-btn{background:var(--gold);color:#1a1206;border:none;border-radius:10px;padding:9px 18px;font-size:13px;font-weight:600;font-family:var(--sans);cursor:pointer;white-space:nowrap;flex-shrink:0}
+#updateBanner .ub-dismiss{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px;line-height:1;flex-shrink:0}
 .vswitch{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:16px}
 .vswitch button{flex:0 0 auto;border:1px solid var(--line2);background:var(--card);color:var(--txt2);border-radius:12px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)}
 .vswitch button.on{background:var(--gold-dim);color:var(--gold2);border-color:rgba(201,168,106,.3)}
@@ -268,6 +275,16 @@ section.on{display:block}
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
+<div id="updateBanner">
+  <div class="ub-text">
+    <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="#c9a86a" stroke-width="1.5"/><path d="M12 7v5l3 3" stroke="#c9a86a" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <div><div>New version available</div><div class="ub-sub">Tap to get the latest update</div></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <button class="ub-btn" onclick="doUpdate()">Update now</button>
+    <button class="ub-dismiss" onclick="dismissUpdate()" aria-label="Dismiss">×</button>
+  </div>
+</div>
 <input type="file" id="fileIn" accept="application/json" style="display:none" />
 
 <script>
@@ -1465,6 +1482,7 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.18.2',notes:['When a new version is ready, a gold banner slides up from the bottom — tap <b>Update now</b> to reload instantly, or dismiss it and update later.']},
  {v:'1.18.1',notes:['Maintenance release — service worker cache refreshed and version bumped to ensure all devices pull the latest build.']},
  {v:'1.17.2',notes:['Swiping back (or the system back gesture) no longer closes the app. It now closes an open dialog or the menu, or returns you to Home — so you won’t lose your place by accident. To actually exit, use your phone’s app switcher.']},
  {v:'1.17.0',notes:['<b>Due-date reminders</b> — in Cash-Flow Forecast, tap “⏰ Add reminders to calendar” and Atlas drops all your chits, EMIs, card bills, subscriptions and renewals into your phone calendar, each with alerts <b>2 days before, 1 day before, and on the day</b>. Your calendar then notifies you even when Atlas is closed.']},
@@ -2380,17 +2398,28 @@ $('#fileIn').addEventListener('change',e=>{
   r.readAsText(f);e.target.value='';
 });
 
-/* PWA: register service worker + auto-refresh when a new version is deployed */
-const APP_VERSION='1.18.1';
+/* PWA: register service worker + notify user when a new version is ready */
+const APP_VERSION='1.18.2';
+let _swWaiting=null;
+function doUpdate(){if(_swWaiting){_swWaiting.postMessage('SKIP_WAITING');}else{location.reload();}}
+function dismissUpdate(){document.getElementById('updateBanner').classList.remove('show');}
+function showUpdateBanner(){document.getElementById('updateBanner').classList.add('show');}
 (function pwa(){
   if(!('serviceWorker' in navigator))return;
-  let reg=null, reloaded=false;
-  navigator.serviceWorker.register('sw.js').then(r=>{reg=r;r.update();}).catch(()=>{});
-  // when a freshly-deployed worker takes control, reload once to show the new version
+  let reg=null,reloaded=false;
+  function onWaiting(sw){_swWaiting=sw;showUpdateBanner();}
+  navigator.serviceWorker.register('sw.js').then(r=>{
+    reg=r;r.update();
+    if(r.waiting)onWaiting(r.waiting);
+    r.addEventListener('updatefound',()=>{
+      const sw=r.installing;
+      sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)onWaiting(sw);});
+    });
+  }).catch(()=>{});
+  // reload once the new SW takes control (triggered after user taps "Update now")
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
     if(reloaded)return;reloaded=true;location.reload();
   });
-  // check for a new deploy whenever the app is reopened / refocused
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&reg)reg.update();});
 })();
 
