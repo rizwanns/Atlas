@@ -144,6 +144,19 @@ section.on{display:block}
 
 .lockwrap{max-width:420px;margin:40px auto;text-align:center}
 .copybtn{cursor:pointer;color:var(--gold);font-size:12px;font-weight:600;border:none;background:none;font-family:var(--sans)}
+/* NUMERIC KEYPAD */
+.numpad{display:flex;flex-direction:column;align-items:center;gap:18px}
+.np-dots{display:flex;gap:20px;height:28px;align-items:center}
+.np-dots span{font-size:14px;color:var(--muted);transition:.15s cubic-bezier(.34,1.56,.64,1)}
+.np-dots span.np-on{color:var(--gold);font-size:18px;transform:scale(1.2)}
+.np-grid{display:grid;grid-template-columns:repeat(3,68px);gap:10px}
+.np-key{width:68px;height:68px;border-radius:50%;border:1px solid var(--line2);background:var(--card2);color:var(--txt);font-size:22px;font-family:var(--mono);cursor:pointer;display:grid;place-items:center;transition:.12s;-webkit-tap-highlight-color:transparent;user-select:none}
+.np-key:active{background:var(--gold-dim);border-color:var(--gold);transform:scale(.9)}
+.np-key.np-del{color:var(--muted);font-size:20px}
+.np-key.np-blank{visibility:hidden;pointer-events:none}
+.np-err{font-size:12px;color:var(--red);min-height:16px;text-align:center;margin-top:4px}
+.np-label{font-size:13px;color:var(--muted);text-align:center;margin-bottom:4px}
+/* END NUMERIC KEYPAD */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(40px);background:var(--card2);border:1px solid var(--line2);color:var(--txt);padding:12px 20px;border-radius:12px;font-size:13px;z-index:500;opacity:0;transition:.3s;pointer-events:none}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 #updateBanner{position:fixed;bottom:0;left:0;right:0;z-index:600;background:linear-gradient(135deg,#1a1508,#241d0a);border-top:1px solid var(--gold);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;transform:translateY(100%);transition:transform .35s cubic-bezier(.22,.68,0,1.2);pointer-events:none}
@@ -1482,6 +1495,7 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.19.0',notes:['<b>4-digit PIN keypad everywhere</b> — App Lock, Card Vault, and Login Vault all use a numeric dial pad. No keyboard, no typing — just tap 4 digits and you\'re in. PINs auto-submit on the 4th digit.']},
  {v:'1.18.2',notes:['When a new version is ready, a gold banner slides up from the bottom — tap <b>Update now</b> to reload instantly, or dismiss it and update later.']},
  {v:'1.18.1',notes:['Maintenance release — service worker cache refreshed and version bumped to ensure all devices pull the latest build.']},
  {v:'1.17.2',notes:['Swiping back (or the system back gesture) no longer closes the app. It now closes an open dialog or the menu, or returns you to Home — so you won’t lose your place by accident. To actually exit, use your phone’s app switcher.']},
@@ -2088,46 +2102,73 @@ async function bioUnlock(){
     return true;
   }catch(e){return false;}
 }
+/* ── Numeric keypad engine ── */
+const _np={};
+function npHTML(id){
+  return `<div class="numpad">
+    <div class="np-dots" id="npd_${id}"><span>○</span><span>○</span><span>○</span><span>○</span></div>
+    <div class="np-grid">
+      ${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="np-key" onclick="npPush('${id}',${n})">${n}</button>`).join('')}
+      <button class="np-key np-blank"></button>
+      <button class="np-key" onclick="npPush('${id}',0)">0</button>
+      <button class="np-key np-del" onclick="npPop('${id}')">⌫</button>
+    </div>
+  </div>`;}
+function npPush(id,d){
+  const s=_np[id]||'';if(s.length>=4)return;
+  _np[id]=s+d;npDraw(id);
+  if(_np[id].length===4)setTimeout(()=>npSubmit(id),130);}
+function npPop(id){_np[id]=(_np[id]||'').slice(0,-1);npDraw(id);}
+function npDraw(id){
+  const v=_np[id]||'';
+  const el=document.getElementById('npd_'+id);if(!el)return;
+  el.innerHTML=[0,1,2,3].map(i=>`<span class="${i<v.length?'np-on':''}">${i<v.length?'●':'○'}</span>`).join('');}
+function npVal(id){return _np[id]||'';}
+function npReset(id,errMsg){_np[id]='';npDraw(id);const e=document.getElementById('npe_'+id);if(e)e.textContent=errMsg||'';}
+function npErr(id,msg){const e=document.getElementById('npe_'+id);if(e)e.textContent=msg;}
+function npErrHTML(id){return `<div class="np-err" id="npe_${id}"></div>`;}
+function npSubmit(id){
+  if(id==='lock')  tryPin();
+  else if(id==='pcur') _verifyCurPin();
+  else if(id==='pnew') _showConfirmPin();
+  else if(id==='pconf') _savePin();
+  else if(id==='vault') doUnlock();
+  else if(id==='vnew')  _vaultConfirmStep();
+  else if(id==='vconf') _vaultCreate();
+}
+
 let APP_UNLOCKED=false,bioBusy=false;
 function showAppLock(){
   if($('#applock'))return;
+  npReset('lock');
   const d=document.createElement('div');d.id='applock';
   d.style.cssText='position:fixed;inset:0;z-index:100000;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px';
   const bio=DB.meta.bioCredId&&bioSupported();
   if(bio){
-    d.innerHTML=`<div class="card" style="max-width:340px;width:100%;text-align:center">
-      <div id="bioIcon" style="font-size:56px;margin-bottom:4px;cursor:pointer;user-select:none" onclick="tryBio(false)">☝</div>
-      <h3 style="font-family:var(--serif);font-size:24px">Atlas locked</h3>
-      <p id="lockMsg" class="muted" style="margin:6px 0 18px;font-size:13px">Authenticating with fingerprint…</p>
+    d.innerHTML=`<div class="card" style="max-width:340px;width:100%;text-align:center;padding:28px 24px">
+      <div id="bioIcon" style="font-size:52px;margin-bottom:6px;cursor:pointer" onclick="tryBio(false)">☝</div>
+      <h3 style="font-family:var(--serif);font-size:22px">Atlas locked</h3>
+      <p id="lockMsg" class="muted" style="margin:6px 0 20px;font-size:13px">Tap to unlock with fingerprint</p>
       <button id="bioBtn" class="btn gold" style="width:100%" onclick="tryBio(false)">☝ Unlock with fingerprint</button>
-      <div id="pinArea" style="display:none;margin-top:14px">
-        <input id="pinIn" type="password" inputmode="numeric" placeholder="••••" style="text-align:center;letter-spacing:8px" onkeydown="if(event.key==='Enter')tryPin()">
-        <button class="btn" style="width:100%;margin-top:12px" onclick="tryPin()">Unlock with PIN</button>
-      </div>
-      <p id="pinSwitch" class="muted" style="font-size:12px;margin-top:16px;cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="showPinArea()">Use PIN instead</p>
-      <p id="pinErr" style="font-size:11.5px;margin-top:8px;color:var(--red);min-height:14px"></p>
+      <div id="pinArea" style="display:none;margin-top:20px">${npHTML('lock')}${npErrHTML('lock')}</div>
+      <p id="pinSwitch" class="muted" style="font-size:12px;margin-top:18px;cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="showPinArea()">Use PIN instead</p>
     </div>`;
     document.body.appendChild(d);
     setTimeout(()=>tryBio(true),200);
   }else{
-    d.innerHTML=`<div class="card" style="max-width:340px;width:100%;text-align:center">
-      <div style="font-size:42px;margin-bottom:10px">⚷</div>
-      <h3 style="font-family:var(--serif);font-size:24px">Atlas locked</h3>
-      <p class="muted" style="margin:6px 0 18px;font-size:13px">Enter your PIN to continue.</p>
-      <div id="pinArea">
-        <input id="pinIn" type="password" inputmode="numeric" placeholder="••••" style="text-align:center;letter-spacing:8px" onkeydown="if(event.key==='Enter')tryPin()">
-        <button class="btn gold" style="width:100%;margin-top:12px" onclick="tryPin()">Unlock with PIN</button>
-      </div>
-      <p id="pinErr" style="font-size:11.5px;margin-top:12px;color:var(--red);min-height:14px"></p>
+    d.innerHTML=`<div class="card" style="max-width:340px;width:100%;text-align:center;padding:28px 24px">
+      <div style="font-size:40px;margin-bottom:10px">⚷</div>
+      <h3 style="font-family:var(--serif);font-size:22px">Atlas locked</h3>
+      <p class="muted" style="margin:6px 0 22px;font-size:13px">Enter your 4-digit PIN</p>
+      ${npHTML('lock')}
+      ${npErrHTML('lock')}
     </div>`;
     document.body.appendChild(d);
-    setTimeout(()=>{const i=$('#pinIn');if(i)i.focus();},100);
   }
 }
 function showPinArea(){
   const pa=$('#pinArea');if(pa)pa.style.display='block';
   const sw=$('#pinSwitch');if(sw)sw.style.display='none';
-  const i=$('#pinIn');if(i)i.focus();
 }
 async function tryBio(auto){
   if(bioBusy)return;bioBusy=true;
@@ -2135,54 +2176,119 @@ async function tryBio(auto){
   let ok=false;
   try{ok=await bioUnlock();}finally{bioBusy=false;}
   if(ok){APP_UNLOCKED=true;try{sessionStorage.setItem('atlasUnlocked','1');}catch(e){}const d=$('#applock');if(d)d.remove();return;}
-  // blocked (no gesture yet) or a real failure
   if(auto){
-    if(msg)msg.textContent='Tap the fingerprint button to unlock.';
+    if(msg)msg.textContent='Tap to unlock with fingerprint';
   }else{
-    if(msg)msg.textContent='Fingerprint didn\'t work — try again or use your PIN.';
+    if(msg)msg.textContent='Fingerprint failed — use your PIN.';
     showPinArea();
   }
 }
-async function tryPin(){const v=$('#pinIn').value||'';const h=await sha256(v);if(h===DB.meta.pinHash){APP_UNLOCKED=true;try{sessionStorage.setItem('atlasUnlocked','1');}catch(e){}const d=$('#applock');if(d)d.remove();}else{$('#pinErr').textContent='Wrong PIN';$('#pinIn').value='';}}
+async function tryPin(){
+  const v=npVal('lock');
+  const h=await sha256(v);
+  if(h===DB.meta.pinHash){
+    APP_UNLOCKED=true;
+    try{sessionStorage.setItem('atlasUnlocked','1');}catch(e){}
+    const d=$('#applock');if(d)d.remove();
+  }else{
+    npReset('lock','Wrong PIN — try again');
+  }
+}
 function appLockSettings(){
   const has=!!(DB.meta&&DB.meta.pinHash);
   const bioOn=!!(DB.meta&&DB.meta.bioCredId);
-  modal('App Lock',`
-   <p class="muted" style="font-size:12.5px;margin-bottom:14px">${has?'A PIN is set — Atlas asks for it each time you open the app.':'Set a numeric PIN to lock the whole app on open. This is a privacy lock, not full encryption — your Card &amp; Login vaults stay separately AES-encrypted.'}</p>
-   ${has?`<div class="field"><label>Current PIN</label><input id="pinCur" type="password" inputmode="numeric"></div>`:''}
-   <div class="field"><label>${has?'New PIN':'PIN'} (4–8 digits${has?', blank to remove':''})</label><input id="pinNew" type="password" inputmode="numeric"></div>
-   <button class="btn gold" style="width:100%" onclick="savePin(${has})">Save PIN</button>
-   ${has&&bioSupported()?`<div style="border-top:1px solid var(--line);margin:16px 0 0;padding-top:16px">${bioOn?`<p class="muted" style="font-size:12.5px;margin-bottom:10px">Fingerprint unlock is on.</p><button class="btn danger" style="width:100%" onclick="bioDisable()">Turn off fingerprint</button>`:`<p class="muted" style="font-size:12.5px;margin-bottom:10px">Use your device fingerprint/Face to unlock (PIN still works as backup).</p><button class="btn" style="width:100%" onclick="bioRegister()">☝ Enable fingerprint unlock</button>`}</div>`:has?'':''}`);
+  if(has){
+    npReset('pcur');
+    modal('App Lock',`
+      <p class="np-label" style="margin-bottom:14px">Enter your current PIN</p>
+      ${npHTML('pcur')}${npErrHTML('pcur')}
+      <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px;display:flex;flex-direction:column;gap:10px">
+        ${bioSupported()?(bioOn
+          ?`<button class="btn" style="width:100%" onclick="bioDisable()">Turn off fingerprint</button>`
+          :`<button class="btn" style="width:100%" onclick="bioRegister()">☝ Enable fingerprint unlock</button>`):''}
+        <button class="btn danger" style="width:100%" onclick="_pinVerifiedRemove()">Remove PIN</button>
+      </div>`);
+  }else{
+    _showSetPin(false);
+  }
 }
 function bioDisable(){DB.meta.bioCredId=null;save();closeModal();toast('Fingerprint unlock off');}
-async function savePin(has){
-  if(has){const cur=await sha256($('#pinCur').value||'');if(cur!==DB.meta.pinHash){toast('Current PIN is wrong');return;}}
-  const np=($('#pinNew').value||'').trim();
-  if(!np){if(has){DB.meta.pinHash=null;DB.meta.bioCredId=null;save();closeModal();toast('App lock removed');}else closeModal();return;}
-  if(!/^\d{4,8}$/.test(np)){toast('Use 4–8 digits');return;}
+/* called by npSubmit when id==='pcur' */
+async function _verifyCurPin(){
+  const h=await sha256(npVal('pcur'));
+  if(h!==DB.meta.pinHash){npReset('pcur','Wrong PIN — try again');return;}
+  _showSetPin(true);
+}
+async function _pinVerifiedRemove(){
+  /* require current PIN first */
+  const v=npVal('pcur');
+  if(v.length<4){npErr('pcur','Enter your current PIN first');return;}
+  const h=await sha256(v);
+  if(h!==DB.meta.pinHash){npReset('pcur','Wrong PIN — try again');return;}
+  DB.meta.pinHash=null;DB.meta.bioCredId=null;save();closeModal();toast('App lock removed');
+}
+function _showSetPin(isChange){
+  npReset('pnew');
+  modal(isChange?'New PIN':'Set PIN',`
+    <p class="np-label" style="margin-bottom:14px">${isChange?'Enter your new 4-digit PIN':'Choose a 4-digit PIN'}</p>
+    ${npHTML('pnew')}${npErrHTML('pnew')}`);
+}
+function _showConfirmPin(){
+  npReset('pconf');
+  modal('Confirm PIN',`
+    <p class="np-label" style="margin-bottom:14px">Enter the same PIN again</p>
+    ${npHTML('pconf')}${npErrHTML('pconf')}`);
+}
+async function _savePin(){
+  const np=npVal('pnew'),nc=npVal('pconf');
+  if(np!==nc){npReset('pconf','PINs do not match — try again');return;}
   DB.meta.pinHash=await sha256(np);save();closeModal();toast('App lock set');
 }
 
 /* ============================================================
    VAULT VIEWS
    ============================================================ */
-function lockScreen(title,sub){
+let _vaultPinNew='';
+function lockScreen(title){
   const first=!DB.vaultEnc;
-  return `<div class="lockwrap card">
-    <div style="font-size:42px;margin-bottom:10px">⚿</div>
-    <h3 style="font-family:var(--serif);font-size:24px">${title}</h3>
-    <p class="muted" style="margin:6px 0 20px;font-size:13px">${first?'Set a master password. It is never stored and cannot be recovered — choose carefully.':'Enter your master password to decrypt the vault.'}</p>
-    <input id="mpw" type="password" placeholder="Master password" onkeydown="if(event.key==='Enter')doUnlock()" style="text-align:center">
-    ${first?'<input id="mpw2" type="password" placeholder="Confirm password" style="text-align:center;margin-top:10px">':''}
-    <button class="btn gold" style="width:100%;margin-top:16px" onclick="doUnlock()">${first?'Create vault':'Unlock'}</button>
-    <p class="muted" style="font-size:11px;margin-top:14px">AES-256-GCM · PBKDF2 250k iterations · encrypted before it ever touches storage</p>
+  npReset(first?'vnew':'vault');
+  return `<div class="lockwrap card" style="text-align:center;padding:28px 24px" id="lockScreenWrap">
+    <div style="font-size:40px;margin-bottom:10px">⚿</div>
+    <h3 style="font-family:var(--serif);font-size:22px">${title}</h3>
+    <p class="muted" style="margin:6px 0 22px;font-size:13px" id="lockScreenMsg">${first?'Create a 4-digit vault PIN':'Enter your 4-digit vault PIN'}</p>
+    ${npHTML(first?'vnew':'vault')}
+    ${npErrHTML(first?'vnew':'vault')}
+    <p class="muted" style="font-size:11px;margin-top:18px">AES-256-GCM · encrypted before it ever touches storage</p>
+    ${DB.vaultEnc?`<p style="font-size:11px;margin-top:10px;color:var(--muted);cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="_resetVault()">Forgot PIN? Reset vault</p>`:''}
   </div>`;
 }
+function _resetVault(){
+  if(!confirm('This deletes all vault data permanently. Continue?'))return;
+  DB.vaultEnc=null;VAULT={cards:[],logins:[]};MASTER_KEY=null;save();render();toast('Vault reset');
+}
 async function doUnlock(){
-  const pw=$('#mpw').value;if(!pw){toast('Enter a password');return;}
-  if(!DB.vaultEnc){const c=$('#mpw2');if(c&&c.value!==pw){toast('Passwords do not match');return;}if(pw.length<6){toast('Use at least 6 characters');return;}}
+  const pw=npVal('vault');
   const ok=await unlockVault(pw);
-  if(ok){resetIdle();render();toast('Vault unlocked');}else toast('Wrong password');
+  if(ok){resetIdle();render();toast('Vault unlocked');}
+  else{npReset('vault','Wrong PIN — try again');}
+}
+function _vaultConfirmStep(){
+  _vaultPinNew=npVal('vnew');
+  npReset('vconf');
+  const wrap=document.getElementById('lockScreenWrap');
+  if(wrap){
+    document.getElementById('lockScreenMsg').textContent='Confirm your vault PIN';
+    const oldNp=wrap.querySelector('.numpad');const oldErr=wrap.querySelector('.np-err');
+    const tmp=document.createElement('div');tmp.innerHTML=npHTML('vconf')+npErrHTML('vconf');
+    if(oldNp)oldNp.replaceWith(tmp.children[0]);
+    if(oldErr)oldErr.replaceWith(tmp.children[0]);
+  }
+}
+async function _vaultCreate(){
+  const pw=npVal('vconf');
+  if(pw!==_vaultPinNew){npReset('vconf','PINs do not match — try again');return;}
+  const ok=await unlockVault(pw);
+  if(ok){resetIdle();render();toast('Vault created');}
 }
 function vaultBar(){
   const mins=+(localStorage.getItem('atlasAutoLock')||0);
@@ -2399,7 +2505,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + notify user when a new version is ready */
-const APP_VERSION='1.18.2';
+const APP_VERSION='1.19.0';
 let _swWaiting=null;
 function doUpdate(){if(_swWaiting){_swWaiting.postMessage('SKIP_WAITING');}else{location.reload();}}
 function dismissUpdate(){document.getElementById('updateBanner').classList.remove('show');}
