@@ -1159,7 +1159,7 @@ function vSubs(){
   main.appendChild(top);
   const c=el('div','card');c.style.marginTop='16px';
   c.innerHTML=`<div class="sectit" style="margin:0 0 14px">Recurring</div>`+
-   ([...recurring].sort((a,b)=>subDays(a)-subDays(b)).map(s=>{const nd=subDate(s);const sched=s.freq==='yearly'?('yearly'+(s.month?' · '+new Date(2000,s.month-1,1).toLocaleDateString('en-IN',{month:'long'}):'')):s.freq==='bill'?'monthly bill · varies':'monthly';return `<div class="list-row"><div><div>${s.name} <span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></div><div class="muted" style="font-size:11.5px">${s.card||'—'} · ${sched}${nd?' · next '+nd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}):''}</div></div><div style="text-align:right;white-space:nowrap"><span class="num">${s.freq==='bill'?'~':''}${fmt(s.amount)}</span> <button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></div></div>`;}).join('')||'<div class="empty">No recurring subscriptions or bills.</div>');
+   ([...recurring].sort((a,b)=>subDays(a)-subDays(b)).map(s=>{const nd=subDate(s);const sched=s.freq==='yearly'?('yearly'+(s.month?' · '+new Date(2000,s.month-1,1).toLocaleDateString('en-IN',{month:'long'}):'')):s.freq==='bill'?'monthly bill · varies':'monthly';return `<div class="list-row"><div><div>${s.name} <span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></div><div class="muted" style="font-size:11.5px">${s.card||'—'} · ${sched}${nd?' · next '+nd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}):''}</div></div><div style="text-align:right;white-space:nowrap"><span class="num">${s.freq==='bill'?'~':''}${fmt(s.amount)}</span> <button class="btn sm" onclick="subReminder('${s.id}')" title="Add calendar reminder">⏰</button> <button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></div></div>`;}).join('')||'<div class="empty">No recurring subscriptions or bills.</div>');
   main.appendChild(c);
   const pc=el('div','card');pc.style.marginTop='16px';
   pc.innerHTML=`<div class="sectit" style="margin:0 0 4px">Pay as you go</div>
@@ -1506,6 +1506,9 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.19.6',notes:[
+   'Each subscription and bill now has a ⏰ button — tap it to drop that one item’s due date straight into your phone’s calendar with alerts 2 days before, 1 day before, and on the day. (The Cash-Flow Forecast still has the “add everything” reminder button too.)'
+ ]},
  {v:'1.19.5',notes:[
    '<b>Subscriptions now handle variable bills</b> — added a “Monthly bill — amount varies” option for things like electricity and Wi-Fi that fall due on a fixed date each month but for a different amount. Enter a typical estimate (shown with a ~) and Atlas still forecasts and reminds you on the due date.',
    'Brought back a <b>debit-day picker</b> so you choose exactly which day of the month a subscription or bill is due. The month picker still appears only for yearly items.'
@@ -1572,23 +1575,39 @@ function setCash(){modal('Cash on hand',`
    <p class="muted" style="font-size:12.5px;margin-bottom:12px">Your current bank + cash balance. The forecast starts from here and adds income / subtracts dues over the next 60 days.</p>
    <div class="field"><label>Cash on hand ₹</label><input id="scash" type="number" value="${DB.plan.startCash||''}"></div>
    <button class="btn gold" style="width:100%" onclick="DB.plan.startCash=+document.getElementById('scash').value||0;save();closeModal();render()">Save</button>`);}
-function exportReminders(){
+/* ---- shared iCalendar builders (alerts 2 days before, 1 day before, on the day) ---- */
+function icsEvent(uid,summary,dt,rrule){
   const pad=n=>String(n).padStart(2,'0');
   const esc=s=>String(s).replace(/([,;\\])/g,'\\$1').replace(/\n/g,' ');
-  const mk=(uid,summary,dt,rrule)=>{const ds=dt.getFullYear()+pad(dt.getMonth()+1)+pad(dt.getDate());
-    let s='BEGIN:VEVENT\r\nUID:'+uid+'@atlas\r\nDTSTART:'+ds+'T090000\r\nDTEND:'+ds+'T093000\r\nSUMMARY:'+esc(summary)+'\r\n';
-    if(rrule)s+='RRULE:'+rrule+'\r\n';
-    ['-P2D','-P1D','-PT0M'].forEach(tr=>{s+='BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:'+esc(summary)+'\r\nTRIGGER:'+tr+'\r\nEND:VALARM\r\n';});
-    return s+'END:VEVENT';};
+  const ds=dt.getFullYear()+pad(dt.getMonth()+1)+pad(dt.getDate());
+  let s='BEGIN:VEVENT\r\nUID:'+uid+'@atlas\r\nDTSTART:'+ds+'T090000\r\nDTEND:'+ds+'T093000\r\nSUMMARY:'+esc(summary)+'\r\n';
+  if(rrule)s+='RRULE:'+rrule+'\r\n';
+  ['-P2D','-P1D','-PT0M'].forEach(tr=>{s+='BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:'+esc(summary)+'\r\nTRIGGER:'+tr+'\r\nEND:VALARM\r\n';});
+  return s+'END:VEVENT';
+}
+function icsDownload(vevents,filename){
+  const ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Atlas//Finance//EN\r\nCALSCALE:GREGORIAN\r\n'+vevents.join('\r\n')+'\r\nEND:VCALENDAR';
+  const blob=new Blob([ics],{type:'text/calendar'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();
+}
+function subSummary(s){return (s.freq==='bill'?'Bill: ':'Subscription: ')+s.name+' '+(s.freq==='bill'?'~':'')+fmt(s.amount);}
+function subReminder(id){
+  const s=DB.subs.find(x=>x.id===id);if(!s)return;
+  const d=subDate(s);
+  if(!d){toast('Set a debit day first');return;}
+  icsDownload([icsEvent('sub-'+s.id,subSummary(s),d,s.freq==='yearly'?'FREQ=YEARLY':'FREQ=MONTHLY')],
+    'atlas-'+((s.name||'reminder').replace(/[^a-z0-9]+/gi,'-').toLowerCase())+'.ics');
+  toast('Opening calendar — reminder for '+s.name);
+}
+function exportReminders(){
+  const mk=icsEvent;
   const ev=[];
   (DB.chits||[]).filter(c=>!chitDone(c)).forEach(c=>{const rem=(c.tenure||0)?Math.max(1,c.tenure-chitMonthsPaid(c)):0;ev.push(mk('chit-'+c.id,'Chit: '+c.name+' '+fmt(c.monthly),nextDom(c.day||1),'FREQ=MONTHLY'+(rem?';COUNT='+rem:'')));});
   (DB.emis||[]).filter(e=>e.months>0).forEach(e=>{ev.push(mk('emi-'+e.id,'EMI: '+e.name+' '+fmt(e.amount),e.dueDate?new Date(e.dueDate):nextDom(5),'FREQ=MONTHLY;COUNT='+e.months));});
   (DB.cards||[]).forEach(c=>{if(c.dueDay)ev.push(mk('card-'+c.id,'Card bill: '+c.name,nextDom(c.dueDay),'FREQ=MONTHLY'));});
-  (DB.subs||[]).filter(s=>s.freq!=='payg').forEach(s=>{const d=subDate(s);if(d)ev.push(mk('sub-'+s.id,(s.freq==='bill'?'Bill: ':'Subscription: ')+s.name+' '+(s.freq==='bill'?'~':'')+fmt(s.amount),d,s.freq==='yearly'?'FREQ=YEARLY':'FREQ=MONTHLY'));});
+  (DB.subs||[]).filter(s=>s.freq!=='payg').forEach(s=>{const d=subDate(s);if(d)ev.push(mk('sub-'+s.id,subSummary(s),d,s.freq==='yearly'?'FREQ=YEARLY':'FREQ=MONTHLY'));});
   (DB.renewals||[]).forEach(r=>{if(r.expiry)ev.push(mk('ren-'+r.id,'Renewal: '+r.name+(r.amount?' '+fmt(r.amount):''),new Date(r.expiry),''));});
   if(!ev.length){toast('Add chits, EMIs, cards or renewals first');return;}
-  const ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Atlas//Finance//EN\r\nCALSCALE:GREGORIAN\r\n'+ev.join('\r\n')+'\r\nEND:VCALENDAR';
-  const blob=new Blob([ics],{type:'text/calendar'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='atlas-reminders.ics';a.click();
+  icsDownload(ev,'atlas-reminders.ics');
   toast('Opening calendar file — tap to add '+ev.length+' reminders');
 }
 function vCal(){
@@ -2635,7 +2654,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + notify user when a new version is ready */
-const APP_VERSION='1.19.5';
+const APP_VERSION='1.19.6';
 let _swWaiting=null;
 function doUpdate(){if(_swWaiting){_swWaiting.postMessage('SKIP_WAITING');}else{location.reload();}}
 function dismissUpdate(){document.getElementById('updateBanner').classList.remove('show');}
