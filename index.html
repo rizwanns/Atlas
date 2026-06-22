@@ -700,7 +700,7 @@ function donut(segs,center,label){
 }
 function nextYmd(month,day){const now=new Date();now.setHours(0,0,0,0);let d=new Date(now.getFullYear(),month-1,day);if(d<now)d=new Date(now.getFullYear()+1,month-1,day);return d;}
 function subDate(s){
-  if(s.freq==='monthly'&&s.day)return nextDom(s.day);
+  if((s.freq==='monthly'||s.freq==='bill')&&s.day)return nextDom(s.day);
   if(s.freq==='yearly'&&s.day&&s.month)return nextYmd(s.month,s.day);
   if(s.due!=null){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+s.due);return d;}
   return null;
@@ -1148,7 +1148,7 @@ function delCard(id){DB.cards=DB.cards.filter(c=>c.id!==id);save();render();}
 /* ---- SUBSCRIPTIONS ---- */
 function vSubs(){
   const main=$('#main');const m=M();
-  main.innerHTML=header('Subscriptions','Recurring &amp; pay-as-you-go',`<span class="chip gold" onclick="addSub()" style="cursor:pointer">+ Add</span>`);
+  main.innerHTML=header('Subscriptions &amp; Bills','Recurring payments, utility bills &amp; pay-as-you-go',`<span class="chip gold" onclick="addSub()" style="cursor:pointer">+ Add</span>`);
   const recurring=DB.subs.filter(s=>s.freq!=='payg');
   const payg=DB.subs.filter(s=>s.freq==='payg');
   const biz=recurring.filter(s=>s.scope==='business'),per=recurring.filter(s=>s.scope==='personal');
@@ -1159,7 +1159,7 @@ function vSubs(){
   main.appendChild(top);
   const c=el('div','card');c.style.marginTop='16px';
   c.innerHTML=`<div class="sectit" style="margin:0 0 14px">Recurring</div>`+
-   ([...recurring].sort((a,b)=>subDays(a)-subDays(b)).map(s=>{const nd=subDate(s);const sched=s.freq==='yearly'?('yearly'+(s.month?' · '+new Date(2000,s.month-1,1).toLocaleDateString('en-IN',{month:'long'}):'')):'monthly';return `<div class="list-row"><div><div>${s.name} <span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></div><div class="muted" style="font-size:11.5px">${s.card||'—'} · ${sched}${nd?' · next '+nd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}):''}</div></div><div style="text-align:right;white-space:nowrap"><span class="num">${fmt(s.amount)}</span> <button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></div></div>`;}).join('')||'<div class="empty">No recurring subscriptions.</div>');
+   ([...recurring].sort((a,b)=>subDays(a)-subDays(b)).map(s=>{const nd=subDate(s);const sched=s.freq==='yearly'?('yearly'+(s.month?' · '+new Date(2000,s.month-1,1).toLocaleDateString('en-IN',{month:'long'}):'')):s.freq==='bill'?'monthly bill · varies':'monthly';return `<div class="list-row"><div><div>${s.name} <span class="pill ${s.scope==='business'?'biz':'per'}">${s.scope}</span></div><div class="muted" style="font-size:11.5px">${s.card||'—'} · ${sched}${nd?' · next '+nd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}):''}</div></div><div style="text-align:right;white-space:nowrap"><span class="num">${s.freq==='bill'?'~':''}${fmt(s.amount)}</span> <button class="btn sm danger" onclick="delSub('${s.id}')">✕</button></div></div>`;}).join('')||'<div class="empty">No recurring subscriptions or bills.</div>');
   main.appendChild(c);
   const pc=el('div','card');pc.style.marginTop='16px';
   pc.innerHTML=`<div class="sectit" style="margin:0 0 4px">Pay as you go</div>
@@ -1176,18 +1176,32 @@ function vSubs(){
 function addSub(){
   const cardOpts=DB.cards.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
   const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
-  modal('Add subscription',`
-  <div class="field"><label>Name</label><input id="sn"></div>
-  <div class="field"><label>Billing</label><select id="sf" onchange="document.getElementById('subMonth').style.display=this.value==='yearly'?'block':'none'">
-    <option value="monthly">Monthly (fixed)</option><option value="yearly">Yearly (fixed)</option><option value="payg">Pay as you go</option></select></div>
-  <div class="field"><label>Amount ₹ <span class="muted" style="font-weight:400">(typical, for pay-as-you-go)</span></label><input id="sa" type="number"></div>
-  <div id="subMonth" style="display:none">
-    <div class="field"><label>Month</label><select id="smon"><option value="0">—</option>${months.map((mn,i)=>`<option value="${i+1}">${mn}</option>`).join('')}</select></div>
-  </div>
+  modal('Add subscription or bill',`
+  <div class="field"><label>Name</label><input id="sn" placeholder="e.g. Netflix, Electricity, Wi-Fi"></div>
+  <div class="field"><label>Billing</label><select id="sf" onchange="subFreqChange()">
+    <option value="monthly">Monthly — fixed amount</option>
+    <option value="bill">Monthly bill — amount varies (electricity, Wi-Fi…)</option>
+    <option value="yearly">Yearly — fixed amount</option>
+    <option value="payg">Pay as you go</option></select></div>
+  <div class="field"><label id="saLbl">Amount ₹</label><input id="sa" type="number"></div>
+  <div id="subWhen"><div class="row">
+    <div class="field" id="subDayField"><label>Debit day (1-31)</label><input id="sday" type="number" min="1" max="31" placeholder="5"></div>
+    <div class="field" id="subMonth" style="display:none"><label>Month</label><select id="smon"><option value="0">—</option>${months.map((mn,i)=>`<option value="${i+1}">${mn}</option>`).join('')}</select></div>
+  </div></div>
   <div class="field"><label>Paid with</label><select id="sc">${cardOpts}<option value="Debit card">Debit card</option><option value="UPI / Bank">UPI / Bank auto-debit</option><option value="">Other</option></select></div>
   <div class="field"><label>Scope</label><select id="ss"><option value="business">Business</option><option value="personal">Personal</option></select></div>
-  <button class="btn gold" style="width:100%" onclick="saveSub()">Save</button>`);}
-function saveSub(){const freq=$('#sf').value;DB.subs.push({id:uid(),name:$('#sn').value||'Sub',amount:+$('#sa').value||0,freq,day:1,month:freq==='yearly'?(+$('#smon').value||0):0,card:$('#sc').value||'',scope:$('#ss').value});save();closeModal();render();}
+  <button class="btn gold" style="width:100%" onclick="saveSub()">Save</button>`);
+  subFreqChange();
+}
+function subFreqChange(){
+  const f=$('#sf').value;
+  const when=document.getElementById('subWhen'),day=document.getElementById('subDayField'),mon=document.getElementById('subMonth'),lbl=document.getElementById('saLbl');
+  if(when)when.style.display=f==='payg'?'none':'block';
+  if(day)day.style.display=f==='payg'?'none':'block';
+  if(mon)mon.style.display=f==='yearly'?'block':'none';
+  if(lbl)lbl.innerHTML=f==='bill'?'Typical amount ₹ <span class="muted" style="font-weight:400">(estimate — it can vary each month)</span>':f==='payg'?'Amount ₹ <span class="muted" style="font-weight:400">(typical, for pay-as-you-go)</span>':'Amount ₹';
+}
+function saveSub(){const freq=$('#sf').value;DB.subs.push({id:uid(),name:$('#sn').value||'Sub',amount:+$('#sa').value||0,freq,day:freq==='payg'?1:Math.min(31,Math.max(1,+$('#sday').value||1)),month:freq==='yearly'?(+$('#smon').value||0):0,card:$('#sc').value||'',scope:$('#ss').value});save();closeModal();render();}
 function delSub(id){DB.subs=DB.subs.filter(s=>s.id!==id);save();render();}
 function paygCharge(id){const s=DB.subs.find(x=>x.id===id);if(!s)return;
   modal('Log a charge — '+s.name,`
@@ -1492,6 +1506,10 @@ function saveClaim(id){const c=DB.chits.find(x=>x.id===id);const amt=+$('#cla').
 
 /* ---- WHAT'S NEW ---- */
 const CHANGELOG=[
+ {v:'1.19.5',notes:[
+   '<b>Subscriptions now handle variable bills</b> — added a “Monthly bill — amount varies” option for things like electricity and Wi-Fi that fall due on a fixed date each month but for a different amount. Enter a typical estimate (shown with a ~) and Atlas still forecasts and reminds you on the due date.',
+   'Brought back a <b>debit-day picker</b> so you choose exactly which day of the month a subscription or bill is due. The month picker still appears only for yearly items.'
+ ]},
  {v:'1.19.4',notes:[
    '<b>Smarter Add Card form</b> — the card number now spaces itself into groups of four as you type, the expiry auto-formats to MM/YY, and the network is a dropdown that auto-detects Visa / Mastercard / Amex / RuPay / Diners / Discover from the number (you can still override). A live card preview updates as you type.',
    '<b>Scan a card</b> — tap “📷 Scan card” to snap your card with the camera; Atlas reads the number and expiry for you (best-effort — always double-check, and the photo is never stored).',
@@ -1566,7 +1584,7 @@ function exportReminders(){
   (DB.chits||[]).filter(c=>!chitDone(c)).forEach(c=>{const rem=(c.tenure||0)?Math.max(1,c.tenure-chitMonthsPaid(c)):0;ev.push(mk('chit-'+c.id,'Chit: '+c.name+' '+fmt(c.monthly),nextDom(c.day||1),'FREQ=MONTHLY'+(rem?';COUNT='+rem:'')));});
   (DB.emis||[]).filter(e=>e.months>0).forEach(e=>{ev.push(mk('emi-'+e.id,'EMI: '+e.name+' '+fmt(e.amount),e.dueDate?new Date(e.dueDate):nextDom(5),'FREQ=MONTHLY;COUNT='+e.months));});
   (DB.cards||[]).forEach(c=>{if(c.dueDay)ev.push(mk('card-'+c.id,'Card bill: '+c.name,nextDom(c.dueDay),'FREQ=MONTHLY'));});
-  (DB.subs||[]).filter(s=>s.freq!=='payg').forEach(s=>{const d=subDate(s);if(d)ev.push(mk('sub-'+s.id,'Subscription: '+s.name+' '+fmt(s.amount),d,s.freq==='yearly'?'FREQ=YEARLY':'FREQ=MONTHLY'));});
+  (DB.subs||[]).filter(s=>s.freq!=='payg').forEach(s=>{const d=subDate(s);if(d)ev.push(mk('sub-'+s.id,(s.freq==='bill'?'Bill: ':'Subscription: ')+s.name+' '+(s.freq==='bill'?'~':'')+fmt(s.amount),d,s.freq==='yearly'?'FREQ=YEARLY':'FREQ=MONTHLY'));});
   (DB.renewals||[]).forEach(r=>{if(r.expiry)ev.push(mk('ren-'+r.id,'Renewal: '+r.name+(r.amount?' '+fmt(r.amount):''),new Date(r.expiry),''));});
   if(!ev.length){toast('Add chits, EMIs, cards or renewals first');return;}
   const ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Atlas//Finance//EN\r\nCALSCALE:GREGORIAN\r\n'+ev.join('\r\n')+'\r\nEND:VCALENDAR';
@@ -2617,7 +2635,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + notify user when a new version is ready */
-const APP_VERSION='1.19.4';
+const APP_VERSION='1.19.5';
 let _swWaiting=null;
 function doUpdate(){if(_swWaiting){_swWaiting.postMessage('SKIP_WAITING');}else{location.reload();}}
 function dismissUpdate(){document.getElementById('updateBanner').classList.remove('show');}
