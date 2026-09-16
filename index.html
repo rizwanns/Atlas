@@ -53,6 +53,17 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;o
 .nav a .ic{width:18px;text-align:center;opacity:.8;font-size:15px}
 .nav a:hover{background:var(--card);color:var(--txt)}
 .nav a.on{background:var(--gold-dim);color:var(--gold2);border-color:rgba(201,168,106,.25)}
+.cdot{width:7px;height:7px;border-radius:50%;background:var(--muted);margin-left:auto;flex:none;transition:.2s}
+.cdot.ok{background:var(--green)}
+.cdot.warn{background:var(--amber)}
+.cdot.err{background:var(--red)}
+.cdot.sync{background:var(--blue);animation:cpulse 1s ease-in-out infinite}
+@keyframes cpulse{0%,100%{opacity:1}50%{opacity:.25}}
+.syncpill{margin-left:auto;font-size:15px;color:var(--muted);cursor:pointer;padding:4px 8px;border-radius:999px;border:1px solid var(--line);line-height:1}
+.syncpill.ok{color:var(--green)}
+.syncpill.warn{color:var(--amber)}
+.syncpill.err{color:var(--red)}
+.syncpill.sync{color:var(--blue);animation:cpulse 1s ease-in-out infinite}
 .nav .sep{font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;padding:16px 12px 6px;font-weight:600}
 .main{padding:34px 40px 80px;max-width:1180px;width:100%;margin:0 auto}
 .topbar{display:none}
@@ -238,6 +249,7 @@ section.on{display:block}
 <div class="topbar">
   <button class="burger" onclick="toggleNav()">☰</button>
   <div class="logo">A</div><b>Atlas</b>
+  <div class="syncpill" id="syncPill" onclick="Cloud.openPanel()">○</div>
 </div>
 <div class="scrim" id="scrim" onclick="toggleNav()"></div>
 
@@ -276,6 +288,7 @@ section.on{display:block}
       <a data-v="loginvault"><span class="ic">⚿</span> Login Vault</a>
       <div class="sep">Data</div>
       <a id="lockBtn"><span class="ic">⚷</span> App Lock</a>
+      <a id="cloudBtn"><span class="ic">☁</span> Cloud Sync <span class="cdot" id="cloudDot"></span></a>
       <a id="backupBtn"><span class="ic">⤓</span> Backup / Restore</a>
     </nav>
     <div style="margin-top:auto;padding:16px 12px 2px;color:var(--muted);font-size:10px;letter-spacing:1.5px;cursor:pointer" onclick="showWhatsNew(true)">ATLAS · <span id="verLbl"></span> · what's new</div>
@@ -297,6 +310,7 @@ section.on{display:block}
 </div>
 <input type="file" id="fileIn" accept="application/json" style="display:none" />
 
+<script src="supabase.js"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -307,6 +321,17 @@ section.on{display:block}
 const LS_KEY='atlasDB_v2';
 const fmt=n=>'₹'+Number(n||0).toLocaleString('en-IN');
 const fmtL=n=>{n=Number(n||0);return n>=10000000?'₹'+(n/10000000).toFixed(2)+'Cr':n>=100000?'₹'+(n/100000).toFixed(2)+'L':fmt(n);};
+/* ---------- MULTI-CURRENCY (INR base · AED · SAR) ---------- */
+const CUR={INR:{sym:'₹',name:'Indian Rupee'},AED:{sym:'AED ',name:'UAE Dirham'},SAR:{sym:'SAR ',name:'Saudi Riyal'}};
+const CUR_LIST=['INR','AED','SAR'];
+const FX_DEFAULT={INR:1,AED:24.00,SAR:23.50};
+const cc=c=>CUR[c]?c:'INR';
+const fxRate=c=>{c=cc(c);if(c==='INR')return 1;const r=+((((typeof DB!=='undefined'&&DB.fx)||{}).rates||{})[c]);return r>0?r:FX_DEFAULT[c];};
+const toINR=(a,c)=>Math.round((+a||0)*fxRate(c));
+const fmtC=(n,c)=>CUR[cc(c)].sym+Number(n||0).toLocaleString('en-IN');
+const alsoINR=(n,c)=>cc(c)==='INR'?'':' <span class="muted" style="font-size:11px;font-weight:400">≈ '+fmt(toINR(n,c))+'</span>';
+const curOpts=sel=>CUR_LIST.map(k=>`<option value="${k}" ${cc(sel)===k?'selected':''}>${k} — ${CUR[k].name}</option>`).join('');
+const curSym=c=>CUR[cc(c)].sym.trim();
 const $=s=>document.querySelector(s);
 const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
 const today=()=>new Date();
@@ -339,6 +364,7 @@ function seed(){
     chits:[],
     renewals:[],
     receivables:[],
+    fx:{base:'INR',rates:{INR:1,AED:24.00,SAR:23.50},updated:null},
     meta:{lastSeenVersion:null},
     vaultEnc:null
   };
@@ -354,6 +380,8 @@ if(!DB.gold)DB.gold=[];
 if(!DB.chits)DB.chits=[];
 if(!DB.renewals)DB.renewals=[];
 if(!DB.meta)DB.meta={lastSeenVersion:'1.5.0'};
+if(!DB.fx)DB.fx={base:'INR',rates:{},updated:null};
+DB.fx.rates=Object.assign({},FX_DEFAULT,DB.fx.rates||{});DB.fx.rates.INR=1;
 // ---- INDIVIDUALS LEDGER: migrate F&F loans + receivables into a single per-person history ----
 if(!DB.people){
   DB.people=[];
@@ -381,18 +409,22 @@ if(!DB.people){
   save();
 }
 if(!DB.people)DB.people=[];
-function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(DB));return true;}catch(e){return false;}}
+function saveLocal(){try{localStorage.setItem(LS_KEY,JSON.stringify(DB));return true;}catch(e){return false;}}
+function save(){const ok=saveLocal();try{if(typeof Cloud!=='undefined')Cloud.touch();}catch(e){}return ok;}
 function uid(){return 'x'+Math.random().toString(36).slice(2,9);}
 /* ---- INDIVIDUALS LEDGER helpers ---- */
 function pNet(p){return (p.entries||[]).reduce((s,e)=>s+(e.dir==='out'?e.amount:-e.amount),0);} // >0 they owe me · <0 I owe them
 function pIOwe(p){return Math.max(0,-pNet(p));}
 function pOwesMe(p){return Math.max(0,pNet(p));}
-function peopleIOwe(){return sumBy(DB.people||[],pIOwe);}
-function peopleOwed(){return sumBy(DB.people||[],pOwesMe);}
+function pNetINR(p){return toINR(pNet(p),p.cur);}
+function pIOweINR(p){return Math.max(0,-pNetINR(p));}
+function pOwesMeINR(p){return Math.max(0,pNetINR(p));}
+function peopleIOwe(){return sumBy(DB.people||[],pIOweINR);}   // always ₹ — totals mix currencies
+function peopleOwed(){return sumBy(DB.people||[],pOwesMeINR);}
 
 /* ---------- DERIVED METRICS ---------- */
 function metrics(){
-  const loanTotal=sumBy(DB.loans,l=>l.balance);
+  const loanTotal=sumBy(DB.loans,l=>toINR(l.balance,l.cur));
   const cardTotal=sumBy(DB.cards,c=>c.balance);
   const ff=peopleIOwe();          // what I owe individuals (net)
   const peopleOwe=peopleOwed();   // what individuals owe me (net)
@@ -412,13 +444,13 @@ function metrics(){
   const cardLimit=sumBy(DB.cards,c=>c.limit);
   const util=cardLimit?Math.round(cardTotal/cardLimit*100):0;
   // business vs personal
-  const bizLoan=sumBy(DB.loans.filter(l=>l.scope==='business'),l=>l.balance);
+  const bizLoan=sumBy(DB.loans.filter(l=>l.scope==='business'),l=>toINR(l.balance,l.cur));
   const bizCard=sumBy(DB.cards.filter(c=>c.scope==='business'),c=>c.balance);
   const perLoan=loanTotal-bizLoan, perCard=cardTotal-bizCard;
   const bizOut=sumBy(DB.emis.filter(e=>e.scope==='business'),e=>e.amount)+sumBy(DB.subs.filter(s=>s.scope==='business'),s=>s.amount);
   const perOut=outflow-bizOut;
   // debt-free: months to clear loans at repay/mo (interest-adjusted, simple)
-  let bal=loanTotal, mo=0, rAvg=DB.loans.length?sumBy(DB.loans,l=>l.rate*l.balance)/(loanTotal||1):0;
+  let bal=loanTotal, mo=0, rAvg=DB.loans.length?sumBy(DB.loans,l=>l.rate*toINR(l.balance,l.cur))/(loanTotal||1):0;
   while(bal>0 && mo<600){bal=bal*(1+rAvg/100/12)-repay;mo++;}
   const dfree=new Date();dfree.setMonth(dfree.getMonth()+mo);
   const ymNow=new Date().toISOString().slice(0,7);
@@ -444,7 +476,7 @@ function healthScore(){
   const sr=m.income?m.surplus/m.income:0;
   let sp=sr>=.2?15:sr>=.1?10:sr>0?6:2; s+=sp; parts.push(['Monthly surplus',sp,15,Math.round(sr*100)+'%']);
   // costly debt exposure (10)
-  const costly=sumBy(DB.loans.filter(l=>l.rate>=12),l=>l.balance);
+  const costly=sumBy(DB.loans.filter(l=>l.rate>=12),l=>toINR(l.balance,l.cur));
   let c=costly===0?10:costly<300000?7:4; s+=c; parts.push(['High-interest debt',c,10,fmtL(costly)]);
   return {score:Math.round(s),parts};
 }
@@ -452,18 +484,18 @@ function healthScore(){
 /* ---------- REPAYMENT ENGINE ---------- */
 // fairness + interest-aware order. Relationship loans rotate by lastPaid (oldest paid first).
 function repaymentOrder(method){
-  const debts=DB.loans.map(l=>({...l}));
+  const debts=DB.loans.map(l=>({...l,_inr:toINR(l.balance,l.cur)}));
   const nonRel=debts.filter(d=>!d.relationship);
   const rel=debts.filter(d=>d.relationship);
-  if(method==='snowball') nonRel.sort((a,b)=>a.balance-b.balance);
-  else nonRel.sort((a,b)=>b.rate-a.rate||b.balance-a.balance); // avalanche
+  if(method==='snowball') nonRel.sort((a,b)=>a._inr-b._inr);
+  else nonRel.sort((a,b)=>b.rate-a.rate||b._inr-a._inr); // avalanche — compared in ₹
   // relationship loans: deprioritise whoever was paid most recently → oldest lastPaid first
   rel.sort((a,b)=>new Date(a.lastPaid)-new Date(b.lastPaid));
   // interleave: interest-bearing first (math), but keep a steady relationship trickle (fairness)
   return [...nonRel.filter(d=>d.rate>0), ...rel, ...nonRel.filter(d=>d.rate===0)];
 }
 function forecast(method,extra){
-  let debts=DB.loans.map(d=>({...d}));
+  let debts=DB.loans.map(d=>({...d,balance:toINR(d.balance,d.cur)})); // simulate in ₹
   debts.sort(method==='snowball'?(a,b)=>a.balance-b.balance:(a,b)=>(b.rate-a.rate)||(b.balance-a.balance));
   let mo=0, interestPaid=0;
   while(debts.some(d=>d.balance>0.5) && mo<600){
@@ -736,13 +768,13 @@ function vAdvisor(){
   main.appendChild(g);
 
   // interest leakage
-  const leak=Math.round(sumBy(DB.loans,l=>l.balance*l.rate/100/12));
+  const leak=Math.round(sumBy(DB.loans,l=>toINR(l.balance,l.cur)*l.rate/100/12));
   const il=el('div','card');il.style.marginTop='16px';
   const costly=[...DB.loans].filter(l=>l.rate>0).sort((a,b)=>b.rate-a.rate);
   il.innerHTML=`<div class="sectit" style="margin:0 0 14px">Interest Leakage <small>WHAT DEBT COSTS YOU MONTHLY</small></div>
     <div class="kpi sm val-red">${fmt(leak)}/mo</div>
     <div class="sub" style="margin-bottom:14px">≈ ${fmt(leak*12)} a year bleeding out as interest</div>
-    ${costly.map(l=>{const c=Math.round(l.balance*l.rate/100/12);return `<div class="list-row"><span>${l.name} <span class="muted">@ ${l.rate}%</span></span><span class="num val-red">${fmt(c)}/mo</span></div>`;}).join('')}`;
+    ${costly.map(l=>{const c=Math.round(l.balance*l.rate/100/12);return `<div class="list-row"><span>${l.name} <span class="muted">@ ${l.rate}%</span></span><span class="num val-red">${fmtC(c,l.cur)}/mo</span></div>`;}).join('')}`;
   main.appendChild(il);
 
   // top moves
@@ -757,7 +789,7 @@ function buildInsights(m,h){
   const overUtil=Math.max(0,m.cardTotal-Math.round(m.cardLimit*0.3));
   if(m.util>30)out.push({t:'High credit utilisation hurting your score',b:`You're using ${m.util}% of your total credit limit. Bringing it under 30% (pay down ~${fmt(overUtil)}) protects your CIBIL score and lowers interest exposure.`});
   const cost=[...DB.loans].filter(l=>l.rate>0).sort((a,b)=>b.rate-a.rate)[0];
-  if(cost)out.push({t:`Attack "${cost.name}" first — it's your costliest debt`,b:`At ${cost.rate}% interest, every month you delay costs ~${fmt(Math.round(cost.balance*cost.rate/100/12))}. Prioritise this over 0% friend/family loans mathematically (but mind relationships).`});
+  if(cost)out.push({t:`Attack "${cost.name}" first — it's your costliest debt`,b:`At ${cost.rate}% interest, every month you delay costs ~${fmtC(Math.round(cost.balance*cost.rate/100/12),cost.cur)}. Prioritise this over 0% friend/family loans mathematically (but mind relationships).`});
   if(m.ff>0)out.push({t:'Keep individual balances visible',b:`You owe ${fmt(m.ff)} across friends &amp; family. Open each person under Debts &amp; Dues to see the running history — small, steady, dated repayments preserve trust better than one large delayed transfer.`});
   const ef=DB.goals.find(g=>/emergency/i.test(g.name));
   if(ef&&ef.saved<m.outflow*3)out.push({t:'Build the buffer before the dream',b:`Your emergency fund matters more than the rental land right now — debt + no buffer is fragile. Fully fund 3–6 months of outflow (${fmt(m.outflow*6)}) first, then accelerate the investment goal.`});
@@ -768,7 +800,7 @@ function buildInsights(m,h){
 /* ---- DEBTS & DUES (banks + individuals) ---- */
 function vDebts(){
   const m=M();const main=$('#main');
-  main.innerHTML=header('Debts &amp; Dues','Bank loans &amp; people you borrow / lend with',`<span class="chip" onclick="addLoan()" style="cursor:pointer">+ Bank loan</span> <span class="chip gold" onclick="addPerson()" style="cursor:pointer">+ Person</span>`);
+  main.innerHTML=header('Debts &amp; Dues','Bank loans &amp; people you borrow / lend with',`<span class="chip" onclick="addLoan()" style="cursor:pointer">+ Bank loan</span> <span class="chip gold" onclick="addPerson()" style="cursor:pointer">+ Person</span> <span class="chip" onclick="fxSettings()" style="cursor:pointer">⇄ Rates</span>`);
 
   // KPI summary
   const tot=el('div','grid g3');
@@ -776,6 +808,11 @@ function vDebts(){
     kpi('Owe people',fmtL(m.ff),'friends &amp; family','val-amber')+
     kpi('People owe me',fmtL(m.peopleOwe),'lent out','val-green');
   main.appendChild(tot);
+  if([...(DB.loans||[]),...(DB.people||[])].some(x=>cc(x.cur)!=='INR')){
+    const n=el('div','muted');n.style.cssText='font-size:11.5px;margin-top:10px';
+    n.innerHTML=`Totals above are in ₹, converted at 1 AED = ₹${fxRate('AED')} · 1 SAR = ₹${fxRate('SAR')}. <span style="cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="fxSettings()">Change rates</span>`;
+    main.appendChild(n);
+  }
 
   /* ===== SECTION 1 — BANKS ===== */
   const order=repaymentOrder(DB.plan.method);
@@ -788,9 +825,9 @@ function vDebts(){
       <td>${l.name}<div class="muted" style="font-size:11px">${l.lender||''}</div></td>
       <td><span class="pill ${l.scope==='business'?'biz':'per'}">${l.scope}</span></td>
       <td class="num ${l.rate>=12?'val-red':''}">${l.rate}%</td>
-      <td class="num">${fmt(l.balance)}</td>
+      <td class="num">${fmtC(l.balance,l.cur)}${alsoINR(l.balance,l.cur)}</td>
       <td class="muted" style="font-size:12px">${l.lastPaid?new Date(l.lastPaid).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—'}</td>
-      <td style="text-align:right"><button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button> ${l.rate>0?`<button class="btn sm" onclick="prepayCalc('${l.id}')">Prepay</button> `:''}<button class="btn sm danger" onclick="delLoan('${l.id}')">✕</button></td>
+      <td style="text-align:right"><button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button> ${l.rate>0?`<button class="btn sm" onclick="prepayCalc('${l.id}')">Prepay</button> `:''}<button class="btn sm" onclick="editLoan('${l.id}')">Edit</button> <button class="btn sm danger" onclick="delLoan('${l.id}')">✕</button></td>
    </tr>`).join('')}
    </tbody></table></div>
    <div class="debtcards">
@@ -798,16 +835,18 @@ function vDebts(){
       <div class="dc-top">
         <div class="dc-rank">${i+1}</div>
         <div class="dc-name"><div class="dc-title">${l.name}</div><div class="dc-lender">${l.lender||''}</div></div>
-        <div class="dc-bal num">${fmt(l.balance)}</div>
+        <div class="dc-bal num">${fmtC(l.balance,l.cur)}</div>
       </div>
       <div class="dc-meta">
         <span class="pill ${l.scope==='business'?'biz':'per'}">${l.scope}</span>
         <span class="dc-rate ${l.rate>=12?'hi':''}">${l.rate}%</span>
         <span class="dc-last">${l.lastPaid?'Paid '+new Date(l.lastPaid).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'Not paid yet'}</span>
+        ${cc(l.cur)==='INR'?'':`<span class="dc-last">≈ ${fmt(toINR(l.balance,l.cur))}</span>`}
       </div>
       <div class="dc-actions">
         <button class="btn sm" onclick="payLoan('${l.id}')">Record payment</button>
         ${l.rate>0?`<button class="btn sm" onclick="prepayCalc('${l.id}')">Prepay calc</button>`:''}
+        <button class="btn sm" onclick="editLoan('${l.id}')">Edit</button>
         <button class="btn sm danger icon" onclick="delLoan('${l.id}')">✕</button>
       </div>
    </div>`).join('')}
@@ -816,15 +855,15 @@ function vDebts(){
   main.appendChild(banks);
 
   /* ===== SECTION 2 — INDIVIDUALS ===== */
-  const ppl=[...(DB.people||[])].sort((a,b)=>Math.abs(pNet(b))-Math.abs(pNet(a)));
+  const ppl=[...(DB.people||[])].sort((a,b)=>Math.abs(pNetINR(b))-Math.abs(pNetINR(a)));
   const ind=el('div','card');ind.style.marginTop='16px';
   ind.innerHTML=`<div class="sectit" style="margin:0 0 4px">Individuals</div>
    <div class="muted" style="font-size:12px;margin-bottom:14px">One running history per person — money you borrowed and lent, with dates &amp; payment mode. Tap to open.</div>`+
-   (ppl.length?ppl.map(p=>{const net=pNet(p);const status=net===0?'settled':net>0?'owes you '+fmt(Math.abs(net)):'you owe '+fmt(Math.abs(net));
+   (ppl.length?ppl.map(p=>{const net=pNet(p);const status=net===0?'settled':net>0?'owes you '+fmtC(Math.abs(net),p.cur):'you owe '+fmtC(Math.abs(net),p.cur);
      return `<div class="list-row" style="cursor:pointer" onclick="openPerson('${p.id}')">
-        <div><div>${p.name} <span class="pill ${/famil/i.test(p.relation)?'per':'warn'}" style="margin-left:4px">${p.relation||'Friend'}</span></div>
+        <div><div>${p.name} <span class="pill ${/famil/i.test(p.relation)?'per':'warn'}" style="margin-left:4px">${p.relation||'Friend'}</span>${cc(p.cur)==='INR'?'':` <span class="pill" style="margin-left:2px">${cc(p.cur)}</span>`}</div>
         <div class="muted" style="font-size:11.5px">${(p.entries||[]).length} entr${(p.entries||[]).length===1?'y':'ies'} · ${status}</div></div>
-        <span class="num ${net>0?'val-green':net<0?'val-red':'muted'}">${net===0?'✓':fmt(Math.abs(net))} ›</span>
+        <span class="num ${net>0?'val-green':net<0?'val-red':'muted'}">${net===0?'✓':fmtC(Math.abs(net),p.cur)} ›</span>
       </div>`;}).join('')
     :`<div class="empty">No individuals yet — tap “+ Person” to start a shared history.</div>`);
   main.appendChild(ind);
@@ -837,14 +876,14 @@ function vPerson(){
   const main=$('#main');const p=(DB.people||[]).find(x=>x.id===PERSON_ID);
   if(!p){go('debts');return;}
   const net=pNet(p);
-  const headline=net===0?'All settled':net>0?p.name+' owes you '+fmt(Math.abs(net)):'You owe '+p.name+' '+fmt(Math.abs(net));
-  main.innerHTML=header(p.name,p.relation||'Friend',`<span class="chip" onclick="go('debts')" style="cursor:pointer">‹ Back</span>`);
+  const headline=net===0?'All settled':net>0?p.name+' owes you '+fmtC(Math.abs(net),p.cur):'You owe '+p.name+' '+fmtC(Math.abs(net),p.cur);
+  main.innerHTML=header(p.name,(p.relation||'Friend')+' · ledger in '+cc(p.cur),`<span class="chip" onclick="go('debts')" style="cursor:pointer">‹ Back</span>`);
   const top=el('div','card');
   const lent=sumBy((p.entries||[]).filter(e=>e.dir==='out'),e=>e.amount);
   const got=sumBy((p.entries||[]).filter(e=>e.dir==='in'),e=>e.amount);
   top.innerHTML=`<div class="lbl">Net balance</div>
     <div class="kpi sm ${net>0?'val-green':net<0?'val-red':''}">${headline}</div>
-    <div class="sub" style="margin-top:8px">You gave ${fmt(lent)} · you received ${fmt(got)}</div>
+    <div class="sub" style="margin-top:8px">You gave ${fmtC(lent,p.cur)} · you received ${fmtC(got,p.cur)}${cc(p.cur)==='INR'?'':' · net ≈ '+fmt(toINR(Math.abs(net),p.cur))+' at 1 '+cc(p.cur)+' = ₹'+fxRate(p.cur)}</div>
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn sm gold" onclick="addEntry('${p.id}','out')">↑ I gave money</button>
       <button class="btn sm" onclick="addEntry('${p.id}','in')">↓ I got money</button>
@@ -860,7 +899,7 @@ function vPerson(){
       return `<div class="list-row">
         <div><div>${out?'You gave':'You received'} ${e.note?'<span class="muted">· '+e.note+'</span>':''}</div>
         <div class="muted" style="font-size:11px">${e.date?new Date(e.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}):''}${e.mode&&e.mode!=='—'?' · '+e.mode:''}</div></div>
-        <span class="num ${out?'val-green':'val-red'}">${out?'+':'−'}${fmt(e.amount)} <button class="btn sm danger" onclick="delEntry('${p.id}','${e.id}')">✕</button></span>
+        <span class="num ${out?'val-green':'val-red'}">${out?'+':'−'}${fmtC(e.amount,p.cur)} <button class="btn sm danger" onclick="delEntry('${p.id}','${e.id}')">✕</button></span>
       </div>`;}).join('')
      :'<div class="empty">No transactions yet. Use the buttons above to log money you gave or received.</div>');
   main.appendChild(hist);
@@ -873,31 +912,35 @@ const PAY_MODES=['Cash','Bank','UPI','Cheque','Gold','Other'];
 function addPerson(){modal('Add person',`
   <div class="field"><label>Name</label><input id="pn" placeholder="e.g. Sameer"></div>
   <div class="field"><label>Relationship</label><select id="pr"><option>Friend</option><option>Family</option><option>Other</option></select></div>
+  <div class="field"><label>Currency</label><select id="pc">${curOpts('INR')}</select></div>
+  <p class="muted" style="font-size:11.5px;margin:-4px 0 12px">Their whole ledger runs in this currency. Totals elsewhere convert to ₹ at your saved rate.</p>
   <button class="btn gold" style="width:100%" onclick="savePerson()">Add</button>`);}
-function savePerson(){const n=($('#pn').value||'').trim();if(!n){toast('Enter a name');return;}const p={id:uid(),name:n,relation:$('#pr').value||'Friend',entries:[]};DB.people.push(p);save();closeModal();openPerson(p.id);}
+function savePerson(){const n=($('#pn').value||'').trim();if(!n){toast('Enter a name');return;}const p={id:uid(),name:n,relation:$('#pr').value||'Friend',cur:cc($('#pc').value),entries:[]};DB.people.push(p);save();closeModal();openPerson(p.id);}
 function editPerson(id){const p=DB.people.find(x=>x.id===id);if(!p)return;modal('Edit person',`
   <div class="field"><label>Name</label><input id="pn" value="${p.name||''}"></div>
   <div class="field"><label>Relationship</label><select id="pr"><option ${/^friend/i.test(p.relation)?'selected':''}>Friend</option><option ${/famil/i.test(p.relation)?'selected':''}>Family</option><option ${/other/i.test(p.relation)?'selected':''}>Other</option></select></div>
+  <div class="field"><label>Currency</label><select id="pc">${curOpts(p.cur)}</select></div>
+  <p class="muted" style="font-size:11.5px;margin:-4px 0 12px">Changing this relabels every past entry — the numbers themselves aren't converted.</p>
   <button class="btn gold" style="width:100%" onclick="updPerson('${id}')">Save</button>`);}
-function updPerson(id){const p=DB.people.find(x=>x.id===id);if(!p)return;p.name=($('#pn').value||p.name).trim();p.relation=$('#pr').value||p.relation;save();closeModal();render();}
+function updPerson(id){const p=DB.people.find(x=>x.id===id);if(!p)return;p.name=($('#pn').value||p.name).trim();p.relation=$('#pr').value||p.relation;p.cur=cc($('#pc').value);save();closeModal();render();}
 function delPerson(id){const p=DB.people.find(x=>x.id===id);if(!p)return;if(!confirm('Delete '+p.name+' and their whole history?'))return;DB.people=DB.people.filter(x=>x.id!==id);save();go('debts');}
 function addEntry(id,dir){const p=DB.people.find(x=>x.id===id);if(!p)return;
   modal(dir==='out'?'I gave money to '+p.name:'I got money from '+p.name,`
    <p class="muted" style="font-size:12.5px;margin-bottom:12px">${dir==='out'?'Money leaving you — a loan you give them, or repaying what you owed them.':'Money coming to you — borrowing from them, or them repaying what they owed you.'}</p>
-   <div class="field"><label>Amount ₹</label><input id="enam" type="number" inputmode="numeric" placeholder="e.g. 5000"></div>
+   <div class="field"><label>Amount ${curSym(p.cur)}</label><input id="enam" type="number" inputmode="numeric" placeholder="e.g. 5000"></div>
    <div class="field"><label>Date</label><input id="endt" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
    <div class="field"><label>Mode of payment</label><select id="enmd">${PAY_MODES.map(x=>`<option>${x}</option>`).join('')}</select></div>
    <div class="field"><label>Note (optional)</label><input id="ennt" placeholder="what it was for"></div>
    <button class="btn gold" style="width:100%" onclick="saveEntry('${id}','${dir}')">Save</button>`);}
 function saveEntry(id,dir){const p=DB.people.find(x=>x.id===id);if(!p)return;const amt=+$('#enam').value||0;if(amt<=0){toast('Enter an amount');return;}
   p.entries=p.entries||[];p.entries.push({id:uid(),dir,amount:amt,date:$('#endt').value||new Date().toISOString().slice(0,10),mode:$('#enmd').value||'—',note:($('#ennt').value||'').trim()});
-  save();closeModal();render();toast((dir==='out'?'Gave ':'Got ')+fmt(amt));}
+  save();closeModal();render();toast((dir==='out'?'Gave ':'Got ')+fmtC(amt,p.cur));}
 function delEntry(pid,eid){const p=DB.people.find(x=>x.id===pid);if(!p)return;p.entries=(p.entries||[]).filter(e=>e.id!==eid);save();render();}
 function payLoan(id){
   const l=DB.loans.find(x=>x.id===id);if(!l)return;
   modal('Record payment',`
-    <p class="muted" style="font-size:13px;margin-bottom:12px">${l.name} — current balance <b class="num" style="color:var(--txt)">${fmt(l.balance)}</b></p>
-    <div class="field"><label>Amount paid ₹</label><input id="payamt" type="number" inputmode="numeric" placeholder="e.g. 5000"></div>
+    <p class="muted" style="font-size:13px;margin-bottom:12px">${l.name} — current balance <b class="num" style="color:var(--txt)">${fmtC(l.balance,l.cur)}</b></p>
+    <div class="field"><label>Amount paid ${curSym(l.cur)}</label><input id="payamt" type="number" inputmode="numeric" placeholder="e.g. 5000"></div>
     <div class="field"><label>Date</label><input id="paydate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
     <button class="btn gold" style="width:100%" onclick="confirmPay('${id}')">Subtract from balance</button>`);
 }
@@ -909,32 +952,66 @@ function confirmPay(id){
   l.payments=l.payments||[];l.payments.push({id:uid(),amount:amt,date:d});
   l.lastPaid=d;
   save();closeModal();render();
-  toast(fmt(amt)+' paid · balance now '+fmt(l.balance));
+  toast(fmtC(amt,l.cur)+' paid · balance now '+fmtC(l.balance,l.cur));
 }
 function delLoan(id){DB.loans=DB.loans.filter(l=>l.id!==id);save();render();}
+function editLoan(id){const l=DB.loans.find(x=>x.id===id);if(!l)return;
+  modal('Edit loan',`
+    <div class="field"><label>Loan name</label><input id="eln" value="${l.name||''}"></div>
+    <div class="field"><label>Bank / lender</label><input id="ell" value="${l.lender||''}"></div>
+    <div class="row"><div class="field"><label>Balance</label><input id="elb" type="number" value="${l.balance||0}"></div>
+    <div class="field"><label>Rate %</label><input id="elr" type="number" value="${l.rate||0}"></div></div>
+    <div class="field"><label>Currency</label><select id="elc">${curOpts(l.cur)}</select></div>
+    <p class="muted" style="font-size:11.5px;margin:-4px 0 12px">Switching currency relabels the balance — it isn't converted. Edit the number too if you mean a different amount.</p>
+    <div class="field"><label>Scope</label><select id="els"><option value="business" ${l.scope==='business'?'selected':''}>Business</option><option value="personal" ${l.scope!=='business'?'selected':''}>Personal</option></select></div>
+    <button class="btn gold" style="width:100%" onclick="updLoan('${id}')">Save</button>`);}
+function updLoan(id){const l=DB.loans.find(x=>x.id===id);if(!l)return;
+  l.name=($('#eln').value||l.name).trim();l.lender=($('#ell').value||'').trim();
+  l.balance=Math.max(0,+$('#elb').value||0);l.rate=+$('#elr').value||0;
+  l.cur=cc($('#elc').value);l.scope=$('#els').value||l.scope;
+  save();closeModal();render();toast('Loan updated');}
 function prepayCalc(id){const l=DB.loans.find(x=>x.id===id);if(!l)return;
   modal('Prepayment — '+l.name,`
-   <p class="muted" style="font-size:12.5px;margin-bottom:12px">Balance ${fmt(l.balance)} at ${l.rate}% p.a. Enter an amount to prepay and see the interest it saves.</p>
+   <p class="muted" style="font-size:12.5px;margin-bottom:12px">Balance ${fmtC(l.balance,l.cur)} at ${l.rate}% p.a. Enter an amount to prepay and see the interest it saves.</p>
    <div class="field"><label>Prepay amount ₹</label><input id="ppa" type="number" oninput="ppPreview('${id}')"></div>
    <div id="ppOut" class="muted" style="font-size:13px;margin:4px 0 12px"></div>
    <button class="btn gold" style="width:100%" onclick="applyPrepay('${id}')">Apply as a payment</button>`);
 }
-function ppPreview(id){const l=DB.loans.find(x=>x.id===id);const o=document.getElementById('ppOut');if(!o)return;const amt=Math.min(+document.getElementById('ppa').value||0,l.balance);if(amt<=0){o.innerHTML='';return;}const yr=Math.round(amt*l.rate/100);const mo=Math.round(yr/12);o.innerHTML=`Saves about <b class="val-green">${fmt(mo)}/month</b> (${fmt(yr)}/year) in interest. New balance would be ${fmt(l.balance-amt)}.`;}
-function applyPrepay(id){const l=DB.loans.find(x=>x.id===id);const amt=Math.min(+document.getElementById('ppa').value||0,l.balance);if(amt<=0){toast('Enter an amount');return;}l.balance=Math.max(0,l.balance-amt);l.payments=l.payments||[];l.payments.push({id:uid(),amount:amt,date:new Date().toISOString().slice(0,10)});l.lastPaid=new Date().toISOString().slice(0,10);save();closeModal();render();toast('Prepaid '+fmt(amt));}
+function ppPreview(id){const l=DB.loans.find(x=>x.id===id);const o=document.getElementById('ppOut');if(!o)return;const amt=Math.min(+document.getElementById('ppa').value||0,l.balance);if(amt<=0){o.innerHTML='';return;}const yr=Math.round(amt*l.rate/100);const mo=Math.round(yr/12);o.innerHTML=`Saves about <b class="val-green">${fmtC(mo,l.cur)}/month</b> (${fmtC(yr,l.cur)}/year) in interest. New balance would be ${fmtC(l.balance-amt,l.cur)}.`;}
+function applyPrepay(id){const l=DB.loans.find(x=>x.id===id);const amt=Math.min(+document.getElementById('ppa').value||0,l.balance);if(amt<=0){toast('Enter an amount');return;}l.balance=Math.max(0,l.balance-amt);l.payments=l.payments||[];l.payments.push({id:uid(),amount:amt,date:new Date().toISOString().slice(0,10)});l.lastPaid=new Date().toISOString().slice(0,10);save();closeModal();render();toast('Prepaid '+fmtC(amt,l.cur));}
 function addLoan(){
   modal('Add bank loan',`
     <div class="field"><label>Loan name</label><input id="ln" placeholder="e.g. Gold loan"></div>
     <div class="field"><label>Bank / lender</label><input id="ll" placeholder="e.g. UCO Bank"></div>
-    <div class="row"><div class="field"><label>Balance ₹</label><input id="lb" type="number"></div>
+    <div class="row"><div class="field"><label>Balance</label><input id="lb" type="number"></div>
     <div class="field"><label>Rate %</label><input id="lr" type="number" value="0"></div></div>
+    <div class="field"><label>Currency</label><select id="lc">${curOpts('INR')}</select></div>
     <div class="field"><label>Scope</label><select id="ls"><option value="business">Business</option><option value="personal">Personal</option></select></div>
     <p class="muted" style="font-size:11.5px;margin:4px 0 12px">For money borrowed from or lent to a person, close this and use “+ Person” instead.</p>
     <button class="btn gold" style="width:100%" onclick="saveLoan()">Save</button>`);
 }
 function saveLoan(){
   const bal=+$('#lb').value||0;
-  DB.loans.push({id:uid(),name:$('#ln').value||'Loan',lender:$('#ll').value||'',scope:$('#ls').value,rate:+$('#lr').value||0,balance:bal,original:bal,emi:0,relationship:false,start:new Date().toISOString().slice(0,10),payments:[],lastPaid:new Date().toISOString().slice(0,10)});
+  DB.loans.push({id:uid(),name:$('#ln').value||'Loan',lender:$('#ll').value||'',scope:$('#ls').value,cur:cc($('#lc').value),rate:+$('#lr').value||0,balance:bal,original:bal,emi:0,relationship:false,start:new Date().toISOString().slice(0,10),payments:[],lastPaid:new Date().toISOString().slice(0,10)});
   save();closeModal();render();
+}
+
+/* ---- EXCHANGE RATES ---- */
+function fxSettings(){
+  const r=DB.fx.rates;
+  modal('Exchange rates',`
+    <p class="muted" style="font-size:13px;margin-bottom:14px">Loans and people can each be held in ₹, AED or SAR. These rates are what Atlas uses to fold foreign balances into ₹ totals — net worth, the repayment plan, business vs personal. Set them to the rate you want your books held at; nothing is fetched online.</p>
+    <div class="field"><label>1 AED = ₹</label><input id="fxAED" type="number" step="0.01" inputmode="decimal" value="${r.AED}"></div>
+    <div class="field"><label>1 SAR = ₹</label><input id="fxSAR" type="number" step="0.01" inputmode="decimal" value="${r.SAR}"></div>
+    <p class="muted" style="font-size:11.5px;margin:2px 0 14px">${DB.fx.updated?'Last set '+new Date(DB.fx.updated).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})+'.':'Still on the default placeholders — set your own.'}</p>
+    <button class="btn gold" style="width:100%" onclick="saveFx()">Save rates</button>`);
+}
+function saveFx(){
+  const a=+$('#fxAED').value,s=+$('#fxSAR').value;
+  if(a>0)DB.fx.rates.AED=a;
+  if(s>0)DB.fx.rates.SAR=s;
+  DB.fx.rates.INR=1;DB.fx.updated=new Date().toISOString();
+  save();closeModal();render();toast('Rates updated');
 }
 
 /* ---- REPAYMENT PLAN ---- */
@@ -1394,7 +1471,7 @@ function personStatement(name){
   const key=normName(name);
   const loans=(DB.loans||[]).filter(l=>normName(loanParty(l))===key);
   const recvs=(DB.receivables||[]).filter(r=>normName(r.person)===key);
-  const iOwe=sumBy(loans,l=>l.balance);
+  const iOwe=sumBy(loans,l=>toINR(l.balance,l.cur));
   const theyOwe=sumBy(recvs,r=>recvOut(r));
   const txns=[];
   loans.forEach(l=>{
@@ -2654,7 +2731,7 @@ $('#fileIn').addEventListener('change',e=>{
 });
 
 /* PWA: register service worker + notify user when a new version is ready */
-const APP_VERSION='1.19.6';
+const APP_VERSION='1.21.0';
 let _swWaiting=null;
 function doUpdate(){if(_swWaiting){_swWaiting.postMessage('SKIP_WAITING');}else{location.reload();}}
 function dismissUpdate(){document.getElementById('updateBanner').classList.remove('show');}
@@ -2681,6 +2758,262 @@ function showUpdateBanner(){document.getElementById('updateBanner').classList.ad
 /* block long-press text-search / image-Lens menus on the UI (keep paste in fields) */
 document.addEventListener('contextmenu',function(e){if(!e.target.closest('input,textarea'))e.preventDefault();});
 
+
+/* ============================================================
+   CLOUD SYNC — Supabase (one JSON blob per user)
+   The entire DB object syncs as a single row. The vault stays
+   AES-GCM encrypted inside it, so the server only ever holds
+   ciphertext for cards and logins.
+   ============================================================ */
+const SB_URL = 'https://jsyneevpqafuveaninxm.supabase.co';
+const SB_KEY = 'sb_publishable_vOqZyaK3OQPuFJdAD-TAMA_iTnZEzGc';
+const CLOUD_META = 'atlasCloud_v1';
+
+var Cloud = (function () {
+  let sb = null, user = null, state = 'off', busy = false, timer = null, lastErr = '', booted = false;
+
+  const meta = () => { try { return JSON.parse(localStorage.getItem(CLOUD_META) || '{}'); } catch (e) { return {}; } };
+  const setMeta = o => { try { localStorage.setItem(CLOUD_META, JSON.stringify(Object.assign(meta(), o))); } catch (e) {} };
+  const device = () => /Android/i.test(navigator.userAgent) ? 'Android' : /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'iPhone' : 'Desktop';
+  const ago = iso => {
+    if (!iso) return 'never';
+    const s = Math.round((Date.now() - new Date(iso)) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.round(s / 60) + ' min ago';
+    if (s < 86400) return Math.round(s / 3600) + ' h ago';
+    return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  };
+
+  /* cheap fingerprint so a re-save of identical data isn't treated as a change */
+  function sig() {
+    const str = JSON.stringify(DB); let h = 5381;
+    for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+    return str.length + '.' + h.toString(36);
+  }
+  function localIsEmpty() {
+    const n = ['loans','cards','emis','subs','assets','goals','people','expenses','chits','gold','cars','renewals']
+      .reduce((t, k) => t + ((DB[k] || []).length), 0);
+    return n === 0 && !(DB.income && DB.income.monthly) && !DB.vaultEnc;
+  }
+
+  /* keep the shape intact after adopting a cloud copy */
+  function normalise() {
+    ['loans','cards','emis','subs','assets','goals','vacations','cars','lifestyle','expenses',
+     'nwHistory','sinking','gold','chits','renewals','receivables','people'].forEach(k => { if (!DB[k]) DB[k] = []; });
+    if (!DB.profile) DB.profile = { name: 'Atlas', business: '' };
+    if (!DB.income)  DB.income  = { monthly: 0, label: 'take-home / drawings' };
+    if (!DB.plan)    DB.plan    = { goalContribution: 0, extraRepayment: 0, method: 'avalanche' };
+    if (!DB.meta)    DB.meta    = { lastSeenVersion: APP_VERSION };
+    if (!DB.fx)      DB.fx      = { base: 'INR', rates: {}, updated: null };
+    DB.fx.rates = Object.assign({}, FX_DEFAULT, DB.fx.rates || {}); DB.fx.rates.INR = 1;
+  }
+
+  function setState(s, err) { state = s; lastErr = err || ''; paint(); }
+
+  function paint() {
+    const m = meta();
+    const look = {
+      off:      ['○', 'Local only', ''],
+      syncing:  ['⟳', 'Syncing…',   'sync'],
+      ok:       ['☁', 'Synced ' + ago(m.last), 'ok'],
+      dirty:    ['◌', 'Pending…',   'warn'],
+      offline:  ['⚡', 'Offline',    'warn'],
+      conflict: ['⚠', 'Conflict',   'err'],
+      err:      ['⚠', 'Sync error', 'err']
+    }[state] || ['○', 'Local only', ''];
+    const dot = document.getElementById('cloudDot');
+    if (dot) { dot.className = 'cdot ' + look[2]; dot.title = look[1]; }
+    const pill = document.getElementById('syncPill');
+    if (pill) { pill.textContent = look[0]; pill.className = 'syncpill ' + look[2]; }
+  }
+
+  /* ---------- sync ---------- */
+  function touch() {
+    const s = sig();
+    if (meta().sig === s) { if (state === 'dirty') setState(user ? 'ok' : 'off'); return; }
+    setMeta({ dirty: true });
+    if (!user) { paint(); return; }
+    setState('dirty');
+    clearTimeout(timer);
+    timer = setTimeout(push, 2500);
+  }
+
+  async function push(force) {
+    if (!user || busy) return;
+    if (!navigator.onLine) { setState('offline'); return; }
+    busy = true; setState('syncing');
+    try {
+      const rev = meta().rev || 0;
+      let res;
+      if (!rev) {
+        res = await sb.from('atlas_state')
+          .insert({ user_id: user.id, data: DB, device: device() })
+          .select('rev,updated_at').single();
+        if (res.error && (res.error.code === '23505' || /duplicate/i.test(res.error.message || ''))) {
+          busy = false; return pull();
+        }
+      } else {
+        res = await sb.from('atlas_state')
+          .update({ data: DB, device: device() })
+          .eq('user_id', user.id).eq('rev', rev)
+          .select('rev,updated_at').maybeSingle();
+        if (!res.error && !res.data) {          // someone else moved the row on
+          busy = false; return pull();
+        }
+      }
+      if (res.error) throw res.error;
+      setMeta({ rev: res.data.rev, dirty: false, sig: sig(), last: new Date().toISOString() });
+      setState('ok');
+    } catch (e) {
+      setMeta({ dirty: true });
+      setState(navigator.onLine ? 'err' : 'offline', e.message || 'Sync failed');
+    } finally { busy = false; }
+  }
+
+  async function pull(announce) {
+    if (!user || busy) return;
+    if (!navigator.onLine) { setState('offline'); return; }
+    busy = true; setState('syncing');
+    try {
+      const { data, error } = await sb.from('atlas_state')
+        .select('data,rev,updated_at,device').eq('user_id', user.id).maybeSingle();
+      if (error) throw error;
+      const m = meta();
+      if (!data) { setMeta({ rev: 0 }); busy = false; return push(); }   // first device — seed the cloud
+      if (data.rev === (m.rev || 0)) {
+        busy = false;
+        if (m.dirty) return push();
+        setMeta({ last: new Date().toISOString() }); setState('ok');
+        if (announce) toast('Already up to date');
+        return;
+      }
+      if (data.rev > (m.rev || 0)) {
+        if (!m.rev && localIsEmpty()) { adopt(data); busy = false; toast('Loaded your data from cloud'); return; }
+        if (!m.rev) { busy = false; return firstRun(data); }
+        if (m.dirty) { busy = false; return conflict(data); }
+        adopt(data); if (announce) toast('Pulled the latest from cloud');
+        busy = false; return;
+      }
+      busy = false; return push();   // local ahead — shouldn't happen, but push wins
+    } catch (e) {
+      setState(navigator.onLine ? 'err' : 'offline', e.message || 'Could not reach cloud');
+    } finally { busy = false; }
+  }
+
+  function adopt(row) {
+    DB = row.data; normalise(); saveLocal();
+    setMeta({ rev: row.rev, dirty: false, sig: sig(), last: new Date().toISOString() });
+    VAULT = null; MASTER_KEY = null;          // vault re-unlocks with the PIN
+    setState('ok'); render();
+  }
+
+  /* ---------- conflict ---------- */
+  let _conflict = null;
+  function firstRun(row) {
+    _conflict = row; setState('conflict');
+    modal('This device has its own data', `
+      <p class="muted" style="font-size:13px;margin-bottom:14px">Atlas already holds data on this device, and your account has a copy in the cloud
+      (last written from <b>${row.device || 'another device'}</b>, ${ago(row.updated_at)}). Which one should Atlas keep going forward?</p>
+      <button class="btn gold" style="width:100%;margin-bottom:10px" onclick="Cloud.resolve('cloud')">↓ Use the cloud copy</button>
+      <button class="btn" style="width:100%;margin-bottom:10px" onclick="Cloud.resolve('local')">↑ Upload what's on this device</button>
+      <button class="btn" style="width:100%" onclick="doBackup()">⤓ Download a backup first</button>`);
+  }
+  function conflict(row) {
+    _conflict = row; setState('conflict');
+    modal('Sync conflict', `
+      <p class="muted" style="font-size:13px;margin-bottom:14px">This device has changes that never reached the cloud, and the cloud copy has also moved on
+      (last written from <b>${row.device || 'another device'}</b>, ${ago(row.updated_at)}). Pick the one to keep — the other is archived in Supabase either way.</p>
+      <button class="btn gold" style="width:100%;margin-bottom:10px" onclick="Cloud.resolve('local')">↑ Keep this device's copy</button>
+      <button class="btn" style="width:100%;margin-bottom:10px" onclick="Cloud.resolve('cloud')">↓ Use the cloud copy</button>
+      <button class="btn" style="width:100%" onclick="doBackup()">⤓ Download a backup first</button>`);
+  }
+  function resolve(which) {
+    if (!_conflict) return closeModal();
+    if (which === 'local') { setMeta({ rev: _conflict.rev }); _conflict = null; closeModal(); push(); toast('Uploading this device\'s copy'); }
+    else { adopt(_conflict); _conflict = null; closeModal(); toast('Cloud copy restored'); }
+  }
+
+  /* ---------- auth ---------- */
+  async function doAuth(mode) {
+    const email = (document.getElementById('sbEmail') || {}).value || '';
+    const pw = (document.getElementById('sbPass') || {}).value || '';
+    const msg = document.getElementById('sbMsg');
+    if (!email.trim() || pw.length < 6) { if (msg) msg.textContent = 'Enter an email and a password of at least 6 characters.'; return; }
+    if (msg) msg.textContent = mode === 'up' ? 'Creating account…' : 'Signing in…';
+    try {
+      const { data, error } = mode === 'up'
+        ? await sb.auth.signUp({ email: email.trim(), password: pw })
+        : await sb.auth.signInWithPassword({ email: email.trim(), password: pw });
+      if (error) { if (msg) msg.textContent = error.message; return; }
+      if (mode === 'up' && !data.session) { if (msg) msg.textContent = 'Account created — confirm the link in your email, then sign in.'; return; }
+      closeModal(); toast(mode === 'up' ? 'Account created' : 'Signed in');
+    } catch (e) { if (msg) msg.textContent = e.message || 'Something went wrong.'; }
+  }
+
+  async function signOut() {
+    await sb.auth.signOut();
+    user = null; setMeta({ rev: 0, dirty: false, last: null, email: null });
+    setState('off'); closeModal(); toast('Signed out — data stays on this device');
+  }
+
+  /* ---------- panel ---------- */
+  function openPanel() {
+    if (!sb) { modal('Cloud Sync', '<p class="muted" style="font-size:13px">The Supabase library did not load. Check the connection and reopen Atlas.</p>'); return; }
+    const m = meta();
+    if (!user) {
+      modal('Cloud Sync', `
+        <p class="muted" style="font-size:13px;margin-bottom:16px">Sign in to sync Atlas across your devices. Everything is stored under your account only — the vault stays AES-encrypted, so cards and logins are unreadable server-side.</p>
+        <div class="field"><label>Email</label><input id="sbEmail" type="email" autocomplete="email" placeholder="you@example.com" /></div>
+        <div class="field"><label>Password</label><input id="sbPass" type="password" autocomplete="current-password" placeholder="••••••••" /></div>
+        <p id="sbMsg" class="muted" style="font-size:12px;min-height:16px;margin:2px 0 12px"></p>
+        <button class="btn gold" style="width:100%;margin-bottom:10px" onclick="Cloud.doAuth('in')">Sign in</button>
+        <button class="btn" style="width:100%" onclick="Cloud.doAuth('up')">Create account</button>`);
+      return;
+    }
+    modal('Cloud Sync', `
+      <p class="muted" style="font-size:13px;margin-bottom:6px">Signed in as <b style="color:var(--txt)">${user.email}</b></p>
+      <p class="muted" style="font-size:12.5px;margin-bottom:16px">Status: ${state === 'ok' ? 'synced' : state} · last sync ${ago(m.last)} · version ${m.rev || 0}${lastErr ? '<br><span style="color:var(--red)">' + lastErr + '</span>' : ''}</p>
+      <button class="btn gold" style="width:100%;margin-bottom:10px" onclick="Cloud.syncNow()">⟳ Sync now</button>
+      <button class="btn" style="width:100%;margin-bottom:10px" onclick="Cloud.forcePull()">↓ Replace this device with the cloud copy</button>
+      <button class="btn" style="width:100%" onclick="Cloud.signOut()">Sign out</button>`);
+  }
+  async function syncNow() { closeModal(); setMeta({ dirty: true }); await pull(true); }
+  async function forcePull() {
+    closeModal(); setMeta({ dirty: false });
+    const { data } = await sb.from('atlas_state').select('data,rev,updated_at').eq('user_id', user.id).maybeSingle();
+    if (data) { adopt(data); toast('Restored from cloud'); } else toast('Nothing in the cloud yet');
+  }
+
+  /* ---------- boot ---------- */
+  function init() {
+    if (booted) return; booted = true;
+    if (!window.supabase || !window.supabase.createClient) { setState('off'); return; }
+    sb = window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
+    sb.auth.onAuthStateChange((evt, session) => {
+      const was = user && user.id;
+      user = session ? session.user : null;
+      if (user) {
+        setMeta({ email: user.email });
+        if (user.id !== was) { setState('syncing'); pull(); }
+      } else setState('off');
+    });
+    sb.auth.getSession().then(({ data }) => {
+      user = data.session ? data.session.user : null;
+      if (user) pull(); else setState('off');
+    });
+    window.addEventListener('online', () => { if (user) meta().dirty ? push() : pull(); });
+    window.addEventListener('offline', () => { if (user) setState('offline'); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible' || !user) return;
+      meta().dirty ? push() : pull();
+    });
+    setInterval(() => { if (user && meta().dirty) push(); }, 60000);
+  }
+
+  return { init, touch, push, pull, openPanel, doAuth, signOut, syncNow, forcePull, resolve, paint,
+           get state() { return state; }, get email() { return user ? user.email : null; } };
+})();
+
 /* boot */
 function snapshotNW(){const ym=new Date().toISOString().slice(0,7);const v=metrics().networth;DB.nwHistory=DB.nwHistory||[];const ex=DB.nwHistory.find(s=>s.ym===ym);if(ex)ex.value=v;else DB.nwHistory.push({ym,value:v});DB.nwHistory=DB.nwHistory.slice(-24);save();}
 function nudges(){
@@ -2700,7 +3033,7 @@ function nudges(){
   if(m.income>0&&m.subOut/m.income>0.1)out.push(`Subscriptions are ${Math.round(m.subOut/m.income*100)}% of your income — worth a prune.`);
   if(m.util>50)out.push(`Card utilisation is ${m.util}% — staying under 30% protects your CIBIL score.`);
   const owed=(DB.people||[]).filter(p=>pOwesMe(p)>0);
-  if(owed.length){const t=owed.sort((a,b)=>pOwesMe(b)-pOwesMe(a))[0];out.push(`${t.name} still owes you ${fmt(pOwesMe(t))}.`);}
+  if(owed.length){const t=owed.sort((a,b)=>pOwesMeINR(b)-pOwesMeINR(a))[0];out.push(`${t.name} still owes you ${fmtC(pOwesMe(t),t.cur)}.`);}
   let last=null;(DB.goals||[]).forEach(g=>(g.contributions||[]).forEach(c=>{if(!last||c.date>last)last=c.date;}));
   if(DB.goals&&DB.goals.length){if(!last)out.push("You haven't logged any savings yet — even a small amount counts.");else{const d=daysTo(last);if(d!=null&&-d>21)out.push(`No savings logged in ${-d} days — keep the streak going.`);}}
   return out;
@@ -2713,6 +3046,8 @@ if(DB.meta.lastSeenVersion==null){DB.meta.lastSeenVersion=APP_VERSION;save();}
 else if(cmpVer(APP_VERSION,DB.meta.lastSeenVersion)>0){DB.meta.lastSeenVersion=APP_VERSION;save();setTimeout(()=>showWhatsNew(false),500);}
 if(DB.meta.pinHash){let u=false;try{u=sessionStorage.getItem('atlasUnlocked')==='1';}catch(e){}if(u)APP_UNLOCKED=true;else showAppLock();}
 maybeAutoBackup();
+$('#cloudBtn').addEventListener('click',()=>Cloud.openPanel());
+Cloud.init();
 </script>
 </body>
 </html>
